@@ -1,17 +1,13 @@
-"""Clarify flow for interactive requirements gathering."""
+"""Clarify flow for interactive LLM-powered requirements gathering."""
 
 from .flow import ClarifyFlow, ClarifySession
-from .prd_analyzer import PRDAnalyzer, PRDGap, get_questions_for_focus
-from .prd_builder import build_prd_from_session, enhance_prd_from_session
-from .prd_parser import parse_description_to_prd
+from .llm_analyzer import AnalysisResult, LLMAnalyzer, PRDQuestion, SuggestedStory
 
 __all__ = [
+    "AnalysisResult",
     "ClarifyFlow",
     "ClarifySession",
-    "PRDAnalyzer",
-    "PRDGap",
-    "build_prd_from_session",
-    "enhance_prd_from_session",
-    "get_questions_for_focus",
-    "parse_description_to_prd",
+    "LLMAnalyzer",
+    "PRDQuestion",
+    "SuggestedStory",
 ]

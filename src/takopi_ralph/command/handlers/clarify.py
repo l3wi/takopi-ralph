@@ -1,20 +1,16 @@
-"""Handler for /ralph clarify command with inline keyboard flow."""
+"""Handler for clarify flow with inline keyboard interactions."""
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from takopi.api import CommandContext, CommandResult
 from takopi.transport import RenderedMessage
 
-from ...clarify import (
-    ClarifyFlow,
-    ClarifySession,
-    build_prd_from_session,
-    enhance_prd_from_session,
-)
-from ...clarify.questions import get_all_questions
-from ...prd import PRDManager
+from ...clarify import ClarifyFlow, ClarifySession
+from ...clarify.llm_analyzer import LLMAnalyzer
+from ...prd import PRD, PRDManager
 
 # Callback data prefix for clarify responses (under /ralph prd clarify)
 CLARIFY_CALLBACK_PREFIX = "ralph:prd:clarify:"
@@ -24,7 +20,7 @@ def build_clarify_keyboard(
     session_id: str,
     options: list[str],
     include_skip: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     """Build an inline keyboard for a clarify question.
 
     Args:
@@ -58,17 +54,26 @@ async def send_question(
     ctx: CommandContext,
     session: ClarifySession,
 ) -> None:
-    """Send the current question with inline keyboard."""
+    """Send the current question with inline keyboard.
+
+    Works with the new LLM-generated question format (dict with question, options, context).
+    """
     question = session.current_question()
     if not question:
         return
 
     # Build message
     progress = session.progress_text()
-    text = f"**[{progress}] {question.question}**"
+    question_text = question.get("question", "")
+    context = question.get("context", "")
+
+    text = f"**[{progress}] {question_text}**"
+    if context:
+        text += f"\n\n_{context}_"
 
     # Build keyboard
-    keyboard = build_clarify_keyboard(session.id, question.options)
+    options = question.get("options", [])
+    keyboard = build_clarify_keyboard(session.id, options)
 
     # Send with keyboard
     message = RenderedMessage(
@@ -76,42 +81,6 @@ async def send_question(
         extra={"reply_markup": keyboard},
     )
     await ctx.executor.send(message)
-
-
-async def handle_clarify(ctx: CommandContext) -> CommandResult | None:
-    """Handle /ralph clarify <topic> command.
-
-    Starts an interactive requirements gathering flow using inline keyboards.
-    """
-    cwd = Path.cwd()
-    args = ctx.args[1:] if len(ctx.args) > 1 else []
-
-    if not args:
-        return CommandResult(
-            text="Usage: `/ralph clarify <topic>`\n"
-            "Example: `/ralph clarify Task management app`"
-        )
-
-    topic = " ".join(args)
-
-    # Initialize flow manager
-    flow = ClarifyFlow(cwd / ".ralph")
-
-    # Create new session
-    session = flow.create_session(topic)
-
-    # Send intro message
-    questions = get_all_questions()
-    await ctx.executor.send(
-        f"Starting requirements gathering for **{topic}**\n\n"
-        f"I'll ask you {len(questions)} questions to understand your needs.\n"
-        f"Tap the buttons to answer, or skip questions you're unsure about."
-    )
-
-    # Send first question
-    await send_question(ctx, session)
-
-    return None  # Don't send automatic response
 
 
 async def handle_clarify_callback(
@@ -138,7 +107,7 @@ async def handle_clarify_callback(
     # Get session
     session = flow.get_session(session_id)
     if not session:
-        return CommandResult(text="Session expired. Start a new `/ralph clarify`.")
+        return CommandResult(text="Session expired. Start a new `/ralph prd clarify`.")
 
     # Get current question for context
     question = session.current_question()
@@ -149,8 +118,9 @@ async def handle_clarify_callback(
     else:
         try:
             idx = int(answer_index)
-            if question and 0 <= idx < len(question.options):
-                answer = question.options[idx]
+            options = question.get("options", []) if question else []
+            if question and 0 <= idx < len(options):
+                answer = options[idx]
                 has_more = session.record_answer(answer)
 
                 # Acknowledge the answer
@@ -168,53 +138,97 @@ async def handle_clarify_callback(
         await send_question(ctx, session)
         return None
     else:
-        # Session complete - build or enhance PRD
-        if session.mode == "enhance" and prd_manager.exists():
-            # Enhance existing PRD
-            existing_prd = prd_manager.load()
-            old_count = len(existing_prd.stories)
-            prd = enhance_prd_from_session(existing_prd, session)
-            new_count = len(prd.stories) - old_count
-            prd_manager.save(prd)
+        # Session complete - use LLM to generate/enhance PRD with answers
+        return await _complete_session(ctx, session, flow, prd_manager)
 
-            # Clean up session
-            flow.delete_session(session_id)
 
-            if new_count > 0:
-                new_stories_text = "\n".join(
-                    f"  {s.id}. {s.title}" for s in prd.stories[-new_count:]
-                )
-                return CommandResult(
-                    text=f"**PRD enhanced for {prd.project_name}**\n\n"
-                    f"Added {new_count} new stories:\n{new_stories_text}\n\n"
-                    f"Total: {len(prd.stories)} stories\n"
-                    f"Run `/ralph start` to continue!"
-                )
-            else:
-                return CommandResult(
-                    text=f"**PRD reviewed for {prd.project_name}**\n\n"
-                    f"No new stories needed based on your answers.\n"
-                    f"Total: {len(prd.stories)} stories\n"
-                    f"Run `/ralph start` to continue!"
-                )
-        else:
-            # Create new PRD
-            prd = build_prd_from_session(session)
-            prd_manager.save(prd)
+async def _complete_session(
+    ctx: CommandContext,
+    session: ClarifySession,
+    flow: ClarifyFlow,
+    prd_manager: PRDManager,
+) -> CommandResult:
+    """Complete a clarify session by generating stories from answers.
 
-            # Clean up session
-            flow.delete_session(session_id)
+    Uses LLM to analyze answers and generate appropriate user stories.
+    """
+    await ctx.executor.send("**Generating stories from your answers...**")
 
-            # Send completion message
-            stories_text = "\n".join(
-                f"  {s.id}. {s.title}" for s in prd.stories[:5]
+    # Load or create PRD
+    if session.mode == "enhance" and prd_manager.exists():
+        prd = prd_manager.load()
+    else:
+        # Create mode - get project info from session
+        topic = session.topic
+        description = session.answers.pop("_description", "")
+        prd = PRD(project_name=topic, description=description)
+
+    # Use LLM to generate stories from answers
+    analyzer = LLMAnalyzer(ctx.executor)
+
+    # Filter out internal keys from answers
+    user_answers = {k: v for k, v in session.answers.items() if not k.startswith("_")}
+
+    result = await analyzer.analyze(
+        prd_json=prd.model_dump_json(),
+        mode=session.mode,
+        topic=session.topic,
+        focus=session.focus,
+        answers=user_answers,
+    )
+
+    # Add suggested stories (avoiding duplicates)
+    added_count = 0
+    existing_titles = {s.title.lower() for s in prd.stories}
+
+    for story in result.suggested_stories:
+        if story.title.lower() not in existing_titles:
+            prd.add_story(
+                title=story.title,
+                description=story.description,
+                acceptance_criteria=story.acceptance_criteria,
+                priority=story.priority,
             )
-            if len(prd.stories) > 5:
-                stories_text += f"\n  ... and {len(prd.stories) - 5} more"
+            existing_titles.add(story.title.lower())
+            added_count += 1
 
+    # Save PRD
+    prd_manager.save(prd)
+
+    # Clean up session
+    flow.delete_session(session.id)
+
+    # Build response
+    if session.mode == "enhance":
+        if added_count > 0:
+            new_stories_text = "\n".join(
+                f"  {s.id}. {s.title}" for s in prd.stories[-added_count:]
+            )
             return CommandResult(
-                text=f"Requirements captured for **{prd.project_name}**\n\n"
-                f"Generated {len(prd.stories)} user stories:\n{stories_text}\n\n"
-                f"PRD saved to `prd.json`\n"
-                f"Run `/ralph start` to begin implementation!"
+                text=f"**PRD enhanced for {prd.project_name}**\n\n"
+                f"{result.analysis}\n\n"
+                f"Added {added_count} new stories:\n{new_stories_text}\n\n"
+                f"Total: {len(prd.stories)} stories\n"
+                f"Run `/ralph start` to continue!"
             )
+        else:
+            return CommandResult(
+                text=f"**PRD reviewed for {prd.project_name}**\n\n"
+                f"{result.analysis}\n\n"
+                f"No new stories needed based on your answers.\n"
+                f"Total: {len(prd.stories)} stories\n"
+                f"Run `/ralph start` to continue!"
+            )
+    else:
+        # Create mode
+        stories_text = "\n".join(f"  {s.id}. {s.title}" for s in prd.stories[:5])
+        if len(prd.stories) > 5:
+            stories_text += f"\n  ... and {len(prd.stories) - 5} more"
+
+        return CommandResult(
+            text=f"**PRD created for {prd.project_name}**\n\n"
+            f"{result.analysis}\n\n"
+            f"Generated {len(prd.stories)} user stories:\n{stories_text}\n\n"
+            f"PRD saved to `prd.json`\n"
+            f"Run `/ralph start` to begin implementation!"
+        )

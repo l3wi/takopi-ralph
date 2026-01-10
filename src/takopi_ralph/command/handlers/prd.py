@@ -7,13 +7,9 @@ from pathlib import Path
 
 from takopi.api import CommandContext, CommandResult
 
-from ...clarify import (
-    ClarifyFlow,
-    PRDAnalyzer,
-    get_questions_for_focus,
-    parse_description_to_prd,
-)
-from ...prd import PRDManager
+from ...clarify import ClarifyFlow
+from ...clarify.llm_analyzer import LLMAnalyzer
+from ...prd import PRD, PRDManager
 from .clarify import send_question
 
 # Session storage filename for prd init
@@ -99,7 +95,7 @@ async def handle_prd_init(ctx: CommandContext) -> CommandResult | None:
     """Handle /ralph prd init - create PRD from description.
 
     If no PRD exists, prompts user for a detailed description,
-    then parses it into a structured PRD.
+    then uses LLM to analyze and create a structured PRD.
     """
     cwd = Path.cwd()
     prd_manager = PRDManager(cwd / "prd.json")
@@ -121,10 +117,10 @@ async def handle_prd_init(ctx: CommandContext) -> CommandResult | None:
     await ctx.executor.send(
         "**Create Initial PRD**\n\n"
         "Describe your project in detail. Include:\n"
-        "• What you're building\n"
-        "• Key features (MVP scope)\n"
-        "• Tech stack (if decided)\n"
-        "• Target users\n\n"
+        "- What you're building\n"
+        "- Key features (MVP scope)\n"
+        "- Tech stack (if decided)\n"
+        "- Target users\n\n"
         "The more detail you provide, the better the initial PRD.\n\n"
         "*Reply with your project description.*"
     )
@@ -135,40 +131,105 @@ async def handle_prd_init(ctx: CommandContext) -> CommandResult | None:
 async def handle_prd_init_input(ctx: CommandContext, description: str) -> CommandResult | None:
     """Process the user's project description and create PRD.
 
-    Called when user provides description after /ralph prd init.
+    Uses LLM to analyze description and either ask clarifying questions
+    or generate initial user stories.
     """
     cwd = Path.cwd()
     prd_manager = PRDManager(cwd / "prd.json")
+    flow = ClarifyFlow(cwd / ".ralph")
 
     # Clear the pending session
     _delete_prd_init_session(cwd)
 
-    # Parse description into PRD
-    prd = parse_description_to_prd(description)
+    # Create empty PRD with project name extracted from description
+    project_name = _extract_project_name(description)
+    empty_prd = PRD(project_name=project_name, description=description)
 
-    # Save PRD
-    prd_manager.save(prd)
+    await ctx.executor.send(f"**Analyzing your project:** {project_name}...")
 
-    # Build response
-    stories_text = "\n".join(f"  {s.id}. {s.title}" for s in prd.stories[:5])
-    if len(prd.stories) > 5:
-        stories_text += f"\n  ... and {len(prd.stories) - 5} more"
+    # Use LLM to analyze and get questions/stories
+    analyzer = LLMAnalyzer(ctx.executor)
+    result = await analyzer.analyze(
+        prd_json=empty_prd.model_dump_json(),
+        mode="create",
+        topic=project_name,
+        description=description,
+    )
+
+    # If LLM has questions, start clarify flow
+    if result.questions:
+        # Convert questions to session format
+        pending_questions = [
+            {
+                "question": q.question,
+                "options": q.options,
+                "context": q.context,
+            }
+            for q in result.questions
+        ]
+
+        session = flow.create_session(
+            topic=project_name,
+            mode="create",
+            pending_questions=pending_questions,
+        )
+
+        # Store description in session for later use
+        session.answers["_description"] = description
+        flow.update_session(session)
+
+        await ctx.executor.send(
+            f"**{result.analysis}**\n\n"
+            f"I have {len(result.questions)} questions to help create your PRD."
+        )
+
+        await send_question(ctx, session)
+        return None
+
+    # No questions - generate PRD directly from stories
+    if result.suggested_stories:
+        for story in result.suggested_stories:
+            empty_prd.add_story(
+                title=story.title,
+                description=story.description,
+                acceptance_criteria=story.acceptance_criteria,
+                priority=story.priority,
+            )
+
+        prd_manager.save(empty_prd)
+
+        stories_text = "\n".join(f"  {s.id}. {s.title}" for s in empty_prd.stories[:5])
+        if len(empty_prd.stories) > 5:
+            stories_text += f"\n  ... and {len(empty_prd.stories) - 5} more"
+
+        return CommandResult(
+            text=f"**PRD created for {project_name}**\n\n"
+            f"{result.analysis}\n\n"
+            f"Generated {len(empty_prd.stories)} user stories:\n{stories_text}\n\n"
+            f"PRD saved to `prd.json`\n\n"
+            f"Use `/ralph prd clarify` to refine it, or\n"
+            f"`/ralph start` to begin implementation!"
+        )
+
+    # Fallback - create minimal PRD
+    empty_prd.add_story(
+        title="Project Setup",
+        description="Initialize the project structure",
+        acceptance_criteria=["Project scaffolded", "Dependencies installed"],
+        priority=1,
+    )
+    prd_manager.save(empty_prd)
 
     return CommandResult(
-        text=f"**PRD created for {prd.project_name}**\n\n"
-        f"Generated {len(prd.stories)} user stories:\n{stories_text}\n\n"
-        f"PRD saved to `prd.json`\n\n"
-        f"Use `/ralph prd clarify` to refine it, or\n"
-        f"`/ralph start` to begin implementation!"
+        text=f"**PRD created for {project_name}**\n\n"
+        "Created minimal PRD. Use `/ralph prd clarify` to add more stories."
     )
 
 
 async def handle_prd_clarify(ctx: CommandContext) -> CommandResult | None:
     """Handle /ralph prd clarify [focus] - analyze and improve PRD.
 
-    Two modes:
-    - No args: Full PRD analysis, identify all gaps
-    - With focus: Ask questions about specific area
+    Uses LLM to analyze the PRD and identify gaps or improvements.
     """
     cwd = Path.cwd()
     prd_manager = PRDManager(cwd / "prd.json")
@@ -193,66 +254,104 @@ async def handle_prd_clarify(ctx: CommandContext) -> CommandResult | None:
     # Initialize flow manager
     flow = ClarifyFlow(cwd / ".ralph")
 
-    if focus:
-        # Focused mode: ask questions about specific area
-        questions = get_questions_for_focus(focus)
+    await ctx.executor.send(
+        f"**Analyzing {prd.project_name} PRD...**"
+        + (f"\n*Focus: {focus}*" if focus else "")
+    )
 
-        if not questions:
-            return CommandResult(
-                text=f"Couldn't determine relevant questions for: *{focus}*\n\n"
-                "Try being more specific, or use `/ralph prd clarify` without focus."
-            )
+    # Use LLM to analyze PRD
+    analyzer = LLMAnalyzer(ctx.executor)
+    result = await analyzer.analyze(
+        prd_json=prd.model_dump_json(),
+        mode="enhance",
+        focus=focus,
+    )
 
-        # Create session with focus-specific questions (enhance mode)
-        session = flow.create_session(topic=prd.project_name, questions=questions, mode="enhance")
+    # If LLM has questions, start clarify flow
+    if result.questions:
+        pending_questions = [
+            {
+                "question": q.question,
+                "options": q.options,
+                "context": q.context,
+            }
+            for q in result.questions
+        ]
+
+        session = flow.create_session(
+            topic=prd.project_name,
+            mode="enhance",
+            focus=focus,
+            pending_questions=pending_questions,
+        )
 
         await ctx.executor.send(
-            f"**Clarifying:** {focus}\n\n"
-            f"I'll ask {len(questions)} questions to enhance the PRD."
+            f"**{result.analysis}**\n\n"
+            f"I have {len(result.questions)} questions to improve the PRD."
         )
 
         await send_question(ctx, session)
         return None
 
-    else:
-        # Full analysis mode
-        analyzer = PRDAnalyzer()
-        gaps = analyzer.analyze(prd)
+    # No questions - apply suggested stories directly
+    if result.suggested_stories:
+        added_count = 0
+        for story in result.suggested_stories:
+            # Check for duplicates
+            existing_titles = [s.title.lower() for s in prd.stories]
+            if story.title.lower() not in existing_titles:
+                prd.add_story(
+                    title=story.title,
+                    description=story.description,
+                    acceptance_criteria=story.acceptance_criteria,
+                    priority=story.priority,
+                )
+                added_count += 1
 
-        if not gaps:
+        if added_count > 0:
+            prd_manager.save(prd)
             return CommandResult(
-                text=f"**PRD for {prd.project_name} looks complete!**\n\n"
-                f"{prd.total_count()} stories defined with good coverage.\n\n"
-                "Use `/ralph start` to begin implementation, or\n"
-                "`/ralph prd clarify <focus>` to add specific features."
+                text=f"**PRD Enhanced**\n\n"
+                f"{result.analysis}\n\n"
+                f"Added {added_count} new stories.\n"
+                f"Total: {prd.total_count()} stories\n\n"
+                f"Use `/ralph prd` to view the updated PRD."
             )
 
-        # Get questions for gaps
-        questions = analyzer.get_questions_for_gaps(gaps)
+    # PRD looks complete
+    return CommandResult(
+        text=f"**PRD for {prd.project_name} looks complete!**\n\n"
+        f"{result.analysis}\n\n"
+        f"{prd.total_count()} stories defined.\n\n"
+        "Use `/ralph start` to begin implementation, or\n"
+        "`/ralph prd clarify <focus>` to add specific features."
+    )
 
-        if not questions:
-            return CommandResult(
-                text="**PRD analysis complete**\n\n"
-                "Found some gaps but no additional questions needed.\n"
-                "Use `/ralph prd clarify <focus>` to add specific features."
-            )
 
-        # Create session with gap-specific questions (enhance mode)
-        session = flow.create_session(topic=prd.project_name, questions=questions, mode="enhance")
+def _extract_project_name(description: str) -> str:
+    """Extract project name from description.
 
-        # Format gaps for display
-        gap_list = "\n".join(
-            f"• {gap.value.replace('_', ' ').title()}" for gap in gaps
-        )
+    Looks for patterns like 'building a X', 'create a X', etc.
+    Falls back to first few words.
+    """
+    import re
 
-        await ctx.executor.send(
-            f"**Analyzing {prd.project_name} PRD...**\n\n"
-            f"Found areas to improve:\n{gap_list}\n\n"
-            f"I'll ask {len(questions)} questions to enhance the PRD."
-        )
+    # Try common patterns
+    patterns = [
+        r"(?:building|create|develop|make|implement)\s+(?:a|an|the)?\s*([A-Za-z0-9\s]+?)(?:\.|,|that|which|with|for)",
+        r"^(?:a|an|the)?\s*([A-Za-z0-9\s]+?)(?:\.|,|that|which|with|for|-)",
+    ]
 
-        await send_question(ctx, session)
-        return None
+    for pattern in patterns:
+        match = re.search(pattern, description, re.IGNORECASE)
+        if match:
+            name = match.group(1).strip()
+            if len(name) > 3 and len(name) < 50:
+                return name.title()
+
+    # Fallback: first 3-4 words, capitalized
+    words = description.split()[:4]
+    return " ".join(words).title()[:40]
 
 
 # --- PRD Init Session Management ---

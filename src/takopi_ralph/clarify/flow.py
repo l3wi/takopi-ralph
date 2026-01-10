@@ -1,4 +1,7 @@
-"""Clarify flow state machine for interactive requirements gathering."""
+"""Clarify flow state machine for interactive requirements gathering.
+
+Manages sessions for LLM-powered PRD analysis and question flow.
+"""
 
 from __future__ import annotations
 
@@ -7,62 +10,66 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-
-from .questions import ClarifyQuestion, get_all_questions
+from typing import Any
 
 
 @dataclass
 class ClarifySession:
-    """State of an active clarify session."""
+    """State of an active clarify session.
+
+    Tracks the conversation state between LLM analysis calls,
+    including pending questions and user answers.
+    """
 
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     topic: str = ""
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
-    # Question tracking
-    current_question_index: int = 0
-    answers: dict[str, str] = field(default_factory=dict)
-
-    # Custom questions (if None, use all default questions)
-    custom_question_ids: list[str] | None = None
-
     # Mode: "create" for new PRD, "enhance" for improving existing
     mode: str = "create"
 
-    # Derived requirements
-    emerging_requirements: list[str] = field(default_factory=list)
+    # Focus area for enhance mode (optional)
+    focus: str | None = None
+
+    # Pending questions from LLM analysis
+    pending_questions: list[dict[str, Any]] = field(default_factory=list)
+
+    # Current question index in pending_questions
+    current_question_index: int = 0
+
+    # User answers: {question_text: answer_text}
+    answers: dict[str, str] = field(default_factory=dict)
 
     # Status
     is_complete: bool = False
 
-    def _get_questions(self) -> list[ClarifyQuestion]:
-        """Get the questions for this session."""
-        all_questions = get_all_questions()
-        if self.custom_question_ids is None:
-            return all_questions
-        # Filter to custom questions, preserving order
-        return [q for q in all_questions if q.id in self.custom_question_ids]
+    def current_question(self) -> dict[str, Any] | None:
+        """Get the current question dict.
 
-    def current_question(self) -> ClarifyQuestion | None:
-        """Get the current question."""
-        questions = self._get_questions()
-        if self.current_question_index >= len(questions):
+        Returns:
+            Question dict with 'question', 'options', 'context' keys,
+            or None if no more questions.
+        """
+        if self.current_question_index >= len(self.pending_questions):
             return None
-        return questions[self.current_question_index]
+        return self.pending_questions[self.current_question_index]
 
     def record_answer(self, answer: str) -> bool:
         """Record an answer and advance to next question.
 
-        Returns True if there are more questions.
+        Args:
+            answer: The user's selected answer
+
+        Returns:
+            True if there are more questions, False if complete.
         """
         question = self.current_question()
         if question:
-            self.answers[question.id] = answer
+            self.answers[question["question"]] = answer
 
         self.current_question_index += 1
 
-        questions = self._get_questions()
-        if self.current_question_index >= len(questions):
+        if self.current_question_index >= len(self.pending_questions):
             self.is_complete = True
             return False
 
@@ -71,12 +78,12 @@ class ClarifySession:
     def skip_question(self) -> bool:
         """Skip current question and advance.
 
-        Returns True if there are more questions.
+        Returns:
+            True if there are more questions, False if complete.
         """
         self.current_question_index += 1
 
-        questions = self._get_questions()
-        if self.current_question_index >= len(questions):
+        if self.current_question_index >= len(self.pending_questions):
             self.is_complete = True
             return False
 
@@ -84,10 +91,15 @@ class ClarifySession:
 
     def progress_text(self) -> str:
         """Get progress indicator text."""
-        questions = self._get_questions()
-        total = len(questions)
+        total = len(self.pending_questions)
+        if total == 0:
+            return "0/0"
         current = min(self.current_question_index + 1, total)
         return f"{current}/{total}"
+
+    def has_questions(self) -> bool:
+        """Check if there are pending questions."""
+        return len(self.pending_questions) > 0
 
 
 class ClarifyFlow:
@@ -121,43 +133,47 @@ class ClarifyFlow:
     def create_session(
         self,
         topic: str,
-        questions: list[ClarifyQuestion] | None = None,
         mode: str = "create",
+        focus: str | None = None,
+        pending_questions: list[dict[str, Any]] | None = None,
     ) -> ClarifySession:
         """Create a new clarify session.
 
         Args:
             topic: Project topic/name
-            questions: Optional custom question list. If None, uses all questions.
             mode: "create" for new PRD, "enhance" for improving existing
+            focus: Focus area for enhance mode
+            pending_questions: Questions from LLM analysis
 
         Returns:
             New ClarifySession
         """
-        # Extract question IDs if custom questions provided
-        custom_ids = [q.id for q in questions] if questions else None
-
         session = ClarifySession(
             topic=topic,
-            custom_question_ids=custom_ids,
             mode=mode,
+            focus=focus,
+            pending_questions=pending_questions or [],
         )
 
         # Persist
+        self._persist_session(session)
+        return session
+
+    def _persist_session(self, session: ClarifySession) -> None:
+        """Persist a session to storage."""
         sessions = self._load_sessions()
         sessions[session.id] = {
             "id": session.id,
             "topic": session.topic,
             "created_at": session.created_at.isoformat(),
+            "mode": session.mode,
+            "focus": session.focus,
+            "pending_questions": session.pending_questions,
             "current_question_index": session.current_question_index,
             "answers": session.answers,
-            "custom_question_ids": session.custom_question_ids,
-            "mode": session.mode,
             "is_complete": session.is_complete,
         }
         self._save_sessions(sessions)
-
-        return session
 
     def get_session(self, session_id: str) -> ClarifySession | None:
         """Get a session by ID."""
@@ -170,27 +186,17 @@ class ClarifyFlow:
             id=data["id"],
             topic=data["topic"],
             created_at=datetime.fromisoformat(data["created_at"]),
-            current_question_index=data["current_question_index"],
-            answers=data["answers"],
-            custom_question_ids=data.get("custom_question_ids"),
             mode=data.get("mode", "create"),
-            is_complete=data["is_complete"],
+            focus=data.get("focus"),
+            pending_questions=data.get("pending_questions", []),
+            current_question_index=data.get("current_question_index", 0),
+            answers=data.get("answers", {}),
+            is_complete=data.get("is_complete", False),
         )
 
     def update_session(self, session: ClarifySession) -> None:
         """Update a session in storage."""
-        sessions = self._load_sessions()
-        sessions[session.id] = {
-            "id": session.id,
-            "topic": session.topic,
-            "created_at": session.created_at.isoformat(),
-            "current_question_index": session.current_question_index,
-            "answers": session.answers,
-            "custom_question_ids": session.custom_question_ids,
-            "mode": session.mode,
-            "is_complete": session.is_complete,
-        }
-        self._save_sessions(sessions)
+        self._persist_session(session)
 
     def delete_session(self, session_id: str) -> None:
         """Delete a session."""
