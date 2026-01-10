@@ -7,7 +7,12 @@ from pathlib import Path
 from takopi.api import CommandContext, CommandResult
 from takopi.transport import RenderedMessage
 
-from ...clarify import ClarifyFlow, ClarifySession, build_prd_from_session
+from ...clarify import (
+    ClarifyFlow,
+    ClarifySession,
+    build_prd_from_session,
+    enhance_prd_from_session,
+)
 from ...clarify.questions import get_all_questions
 from ...prd import PRDManager
 
@@ -163,23 +168,53 @@ async def handle_clarify_callback(
         await send_question(ctx, session)
         return None
     else:
-        # Session complete - build PRD
-        prd = build_prd_from_session(session)
-        prd_manager.save(prd)
+        # Session complete - build or enhance PRD
+        if session.mode == "enhance" and prd_manager.exists():
+            # Enhance existing PRD
+            existing_prd = prd_manager.load()
+            old_count = len(existing_prd.stories)
+            prd = enhance_prd_from_session(existing_prd, session)
+            new_count = len(prd.stories) - old_count
+            prd_manager.save(prd)
 
-        # Clean up session
-        flow.delete_session(session_id)
+            # Clean up session
+            flow.delete_session(session_id)
 
-        # Send completion message
-        stories_text = "\n".join(
-            f"  {s.id}. {s.title}" for s in prd.stories[:5]
-        )
-        if len(prd.stories) > 5:
-            stories_text += f"\n  ... and {len(prd.stories) - 5} more"
+            if new_count > 0:
+                new_stories_text = "\n".join(
+                    f"  {s.id}. {s.title}" for s in prd.stories[-new_count:]
+                )
+                return CommandResult(
+                    text=f"**PRD enhanced for {prd.project_name}**\n\n"
+                    f"Added {new_count} new stories:\n{new_stories_text}\n\n"
+                    f"Total: {len(prd.stories)} stories\n"
+                    f"Run `/ralph start` to continue!"
+                )
+            else:
+                return CommandResult(
+                    text=f"**PRD reviewed for {prd.project_name}**\n\n"
+                    f"No new stories needed based on your answers.\n"
+                    f"Total: {len(prd.stories)} stories\n"
+                    f"Run `/ralph start` to continue!"
+                )
+        else:
+            # Create new PRD
+            prd = build_prd_from_session(session)
+            prd_manager.save(prd)
 
-        return CommandResult(
-            text=f"Requirements captured for **{prd.project_name}**\n\n"
-            f"Generated {len(prd.stories)} user stories:\n{stories_text}\n\n"
-            f"PRD saved to `prd.json`\n"
-            f"Run `/ralph start` to begin implementation!"
-        )
+            # Clean up session
+            flow.delete_session(session_id)
+
+            # Send completion message
+            stories_text = "\n".join(
+                f"  {s.id}. {s.title}" for s in prd.stories[:5]
+            )
+            if len(prd.stories) > 5:
+                stories_text += f"\n  ... and {len(prd.stories) - 5} more"
+
+            return CommandResult(
+                text=f"Requirements captured for **{prd.project_name}**\n\n"
+                f"Generated {len(prd.stories)} user stories:\n{stories_text}\n\n"
+                f"PRD saved to `prd.json`\n"
+                f"Run `/ralph start` to begin implementation!"
+            )

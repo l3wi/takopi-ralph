@@ -177,3 +177,105 @@ def build_prd_from_session(session: ClarifySession) -> PRD:
         created_at=datetime.now(UTC),
         stories=stories,
     )
+
+
+def enhance_prd_from_session(existing_prd: PRD, session: ClarifySession) -> PRD:
+    """Enhance an existing PRD with stories based on clarify session answers.
+
+    This function adds new stories based on answers, avoiding duplicates
+    with existing stories.
+    """
+    answers = session.answers
+    existing_titles = {s.title.lower() for s in existing_prd.stories}
+
+    # Get next ID and priority
+    next_id = max((s.id for s in existing_prd.stories), default=0) + 1
+    next_priority = max((s.priority for s in existing_prd.stories), default=0) + 1
+
+    new_stories: list[UserStory] = []
+
+    def add_story(title: str, description: str, criteria: list[str]) -> None:
+        nonlocal next_id, next_priority
+        if title.lower() not in existing_titles:
+            new_stories.append(
+                UserStory(
+                    id=next_id,
+                    title=title,
+                    description=description,
+                    acceptance_criteria=criteria,
+                    priority=next_priority,
+                )
+            )
+            next_id += 1
+            next_priority += 1
+
+    # Authentication if needed
+    auth_method = answers.get("auth_method", "")
+    if auth_method and auth_method != "None needed":
+        add_story(
+            "User Authentication",
+            f"Implement {auth_method} authentication",
+            [
+                "Users can sign up",
+                "Users can log in",
+                "Sessions are secure",
+                "Logout works correctly",
+            ],
+        )
+
+    # Testing based on requirements
+    testing_level = answers.get("testing_level", "")
+    if testing_level and testing_level != "Minimal":
+        add_story(
+            "Testing Implementation",
+            f"Add {testing_level}",
+            [
+                "Tests for core functionality",
+                "All tests passing",
+                "Test coverage meets requirements",
+            ],
+        )
+
+    # Error handling
+    error_handling = answers.get("error_handling", "")
+    if error_handling and ("All" in error_handling or "Comprehensive" in error_handling):
+        add_story(
+            "Error Handling",
+            "Implement comprehensive error handling",
+            [
+                "User-friendly error messages",
+                "Errors are logged",
+                "No unhandled exceptions",
+            ],
+        )
+
+    # External integrations
+    external_apis = answers.get("external_apis", "")
+    if external_apis and external_apis not in ("None", ""):
+        add_story(
+            "External Integrations",
+            f"Integrate with: {external_apis}",
+            [
+                "API connections established",
+                "Error handling for API failures",
+                "Proper authentication with external services",
+            ],
+        )
+
+    # MVP scope additions
+    mvp_scope = answers.get("mvp_scope", "")
+    if mvp_scope and mvp_scope == "Full feature set":
+        add_story(
+            "Extended Features",
+            f"Implement additional features for {existing_prd.project_name}",
+            [
+                "Extended feature set complete",
+                "All user flows working",
+                "Performance optimized",
+            ],
+        )
+
+    # Add new stories to the PRD
+    existing_prd.stories.extend(new_stories)
+
+    return existing_prd

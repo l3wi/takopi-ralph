@@ -26,7 +26,7 @@ from .handlers.init import (
     handle_init_topic_input,
     has_pending_init_session,
 )
-from .handlers.prd import handle_prd
+from .handlers.prd import handle_prd, handle_prd_init_input, has_pending_prd_init_session
 from .handlers.reset import handle_reset
 from .handlers.start import handle_start
 from .handlers.status import handle_status
@@ -37,7 +37,8 @@ HELP_TEXT = """**Ralph - Autonomous Coding Loop**
 Commands:
   `/ralph init` - Interactive project setup
   `/ralph prd` - Show PRD status
-  `/ralph prd clarify <topic>` - Requirements gathering
+  `/ralph prd init` - Create PRD from description
+  `/ralph prd clarify [focus]` - Analyze and improve PRD
   `/ralph start [project]` - Start a Ralph loop
   `/ralph status` - Show current status
   `/ralph stop` - Gracefully stop the loop
@@ -45,7 +46,8 @@ Commands:
 
 Examples:
   `/ralph init`
-  `/ralph prd clarify Task management app`
+  `/ralph prd init`
+  `/ralph prd clarify Add OAuth support`
   `/ralph start`
 """
 
@@ -74,6 +76,11 @@ class RalphCommand:
         if ctx.text.startswith(INIT_CALLBACK_PREFIX):
             # Currently unused, but ready for future init-specific callbacks
             return None
+
+        # Check for pending prd init session waiting for description input
+        # If user sends plain text (not a command), treat it as description input
+        if has_pending_prd_init_session(cwd) and not ctx.text.startswith("/"):
+            return await handle_prd_init_input(ctx, ctx.text)
 
         # Check for pending init session waiting for topic input
         # If user sends plain text (not a command), treat it as topic input

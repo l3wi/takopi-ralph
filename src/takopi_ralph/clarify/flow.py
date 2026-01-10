@@ -23,15 +23,29 @@ class ClarifySession:
     current_question_index: int = 0
     answers: dict[str, str] = field(default_factory=dict)
 
+    # Custom questions (if None, use all default questions)
+    custom_question_ids: list[str] | None = None
+
+    # Mode: "create" for new PRD, "enhance" for improving existing
+    mode: str = "create"
+
     # Derived requirements
     emerging_requirements: list[str] = field(default_factory=list)
 
     # Status
     is_complete: bool = False
 
+    def _get_questions(self) -> list[ClarifyQuestion]:
+        """Get the questions for this session."""
+        all_questions = get_all_questions()
+        if self.custom_question_ids is None:
+            return all_questions
+        # Filter to custom questions, preserving order
+        return [q for q in all_questions if q.id in self.custom_question_ids]
+
     def current_question(self) -> ClarifyQuestion | None:
         """Get the current question."""
-        questions = get_all_questions()
+        questions = self._get_questions()
         if self.current_question_index >= len(questions):
             return None
         return questions[self.current_question_index]
@@ -47,7 +61,7 @@ class ClarifySession:
 
         self.current_question_index += 1
 
-        questions = get_all_questions()
+        questions = self._get_questions()
         if self.current_question_index >= len(questions):
             self.is_complete = True
             return False
@@ -61,7 +75,7 @@ class ClarifySession:
         """
         self.current_question_index += 1
 
-        questions = get_all_questions()
+        questions = self._get_questions()
         if self.current_question_index >= len(questions):
             self.is_complete = True
             return False
@@ -70,7 +84,7 @@ class ClarifySession:
 
     def progress_text(self) -> str:
         """Get progress indicator text."""
-        questions = get_all_questions()
+        questions = self._get_questions()
         total = len(questions)
         current = min(self.current_question_index + 1, total)
         return f"{current}/{total}"
@@ -104,9 +118,30 @@ class ClarifyFlow:
         content = json.dumps(sessions, indent=2, default=str)
         self.sessions_file.write_text(content)
 
-    def create_session(self, topic: str) -> ClarifySession:
-        """Create a new clarify session."""
-        session = ClarifySession(topic=topic)
+    def create_session(
+        self,
+        topic: str,
+        questions: list[ClarifyQuestion] | None = None,
+        mode: str = "create",
+    ) -> ClarifySession:
+        """Create a new clarify session.
+
+        Args:
+            topic: Project topic/name
+            questions: Optional custom question list. If None, uses all questions.
+            mode: "create" for new PRD, "enhance" for improving existing
+
+        Returns:
+            New ClarifySession
+        """
+        # Extract question IDs if custom questions provided
+        custom_ids = [q.id for q in questions] if questions else None
+
+        session = ClarifySession(
+            topic=topic,
+            custom_question_ids=custom_ids,
+            mode=mode,
+        )
 
         # Persist
         sessions = self._load_sessions()
@@ -116,6 +151,8 @@ class ClarifyFlow:
             "created_at": session.created_at.isoformat(),
             "current_question_index": session.current_question_index,
             "answers": session.answers,
+            "custom_question_ids": session.custom_question_ids,
+            "mode": session.mode,
             "is_complete": session.is_complete,
         }
         self._save_sessions(sessions)
@@ -135,6 +172,8 @@ class ClarifyFlow:
             created_at=datetime.fromisoformat(data["created_at"]),
             current_question_index=data["current_question_index"],
             answers=data["answers"],
+            custom_question_ids=data.get("custom_question_ids"),
+            mode=data.get("mode", "create"),
             is_complete=data["is_complete"],
         )
 
@@ -147,6 +186,8 @@ class ClarifyFlow:
             "created_at": session.created_at.isoformat(),
             "current_question_index": session.current_question_index,
             "answers": session.answers,
+            "custom_question_ids": session.custom_question_ids,
+            "mode": session.mode,
             "is_complete": session.is_complete,
         }
         self._save_sessions(sessions)
