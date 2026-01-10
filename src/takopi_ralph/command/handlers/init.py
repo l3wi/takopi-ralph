@@ -11,14 +11,18 @@ from ...clarify.llm_analyzer import LLMAnalyzer
 from ...init import InitFlow, InitPhase
 from ...prd import PRD, PRDManager
 from ...state import StateManager
+from ..context import RalphContext
 from .clarify import send_question
 
 # Callback data prefix for init responses
 INIT_CALLBACK_PREFIX = "ralph:init:"
 
 
-async def handle_init(ctx: CommandContext) -> CommandResult | None:
-    """Handle /ralph init command.
+async def handle_init(
+    ctx: CommandContext,
+    ralph_ctx: RalphContext,
+) -> CommandResult | None:
+    """Handle /ralph [project] [@branch] init command.
 
     Starts interactive project setup:
     1. Checks if project already initialized
@@ -27,14 +31,14 @@ async def handle_init(ctx: CommandContext) -> CommandResult | None:
     4. Uses LLM to generate clarifying questions
     5. Transitions to clarify flow
     """
-    cwd = Path.cwd()
+    cwd = ralph_ctx.cwd
 
     # Check if already initialized with PRD
     prd_manager = PRDManager(cwd / "prd.json")
     if prd_manager.exists():
         prd = prd_manager.load()
         return CommandResult(
-            text=f"Project already initialized: **{prd.project_name}**\n"
+            text=f"Project already initialized in **{ralph_ctx.context_label()}**: **{prd.project_name}**\n"
             f"Progress: {prd.progress_summary()}\n\n"
             f"Use `/ralph prd` to view status or `/ralph start` to begin."
         )
@@ -64,6 +68,7 @@ async def handle_init(ctx: CommandContext) -> CommandResult | None:
 async def handle_init_topic_input(
     ctx: CommandContext,
     topic: str,
+    ralph_ctx: RalphContext,
 ) -> CommandResult | None:
     """Handle topic input during init flow.
 
@@ -73,11 +78,12 @@ async def handle_init_topic_input(
     Args:
         ctx: Command context
         topic: The project topic/description entered by user
+        ralph_ctx: Resolved project context
 
     Returns:
         CommandResult or None
     """
-    cwd = Path.cwd()
+    cwd = ralph_ctx.cwd
 
     # Initialize managers
     init_flow = InitFlow(cwd / ".ralph")
@@ -190,7 +196,7 @@ async def handle_init_topic_input(
     prd_manager.save(empty_prd)
 
     # Clean up init session
-    init_flow.delete_session()
+    init_flow.delete_session(session.id)
 
     stories_text = "\n".join(f"  {s.id}. {s.title}" for s in empty_prd.stories[:5])
     if len(empty_prd.stories) > 5:

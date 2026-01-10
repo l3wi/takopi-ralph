@@ -1,6 +1,7 @@
-"""Prompt template loader for LLM analyzer.
+"""Prompt template loader for LLM analyzer and Ralph engine.
 
-Loads prompt templates from the prompts/ folder and injects variables.
+Loads prompt templates from the templates/ folder and injects variables.
+All templates use .md format with {{variable}} syntax for substitution.
 """
 
 from __future__ import annotations
@@ -9,28 +10,36 @@ import re
 from pathlib import Path
 from typing import Any
 
-PROMPTS_DIR = Path(__file__).parent / "prompts"
+TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
 def load_prompt(name: str, **variables: Any) -> str:
     """Load prompt template and inject variables.
 
     Args:
-        name: Template name (without .txt extension)
-        **variables: Variables to inject into template
+        name: Template name (without extension). Loads {name}.md file.
+        **variables: Variables to inject into template using {{variable}} syntax
 
     Returns:
         Rendered prompt string
 
+    Raises:
+        FileNotFoundError: If template not found
+
     Example:
         load_prompt("create", topic="My App", prd_json="{}")
+        load_prompt("ralph_status", feedback_commands_section="...")
     """
-    template_path = PROMPTS_DIR / f"{name}.txt"
-    if not template_path.exists():
-        raise FileNotFoundError(f"Prompt template not found: {template_path}")
+    # Try .md first (standard), then .txt (legacy fallback)
+    for ext in (".md", ".txt"):
+        template_path = TEMPLATES_DIR / f"{name}{ext}"
+        if template_path.exists():
+            template = template_path.read_text()
+            return _render_template(template, variables)
 
-    template = template_path.read_text()
-    return _render_template(template, variables)
+    raise FileNotFoundError(
+        f"Template not found: {name}.txt or {name}.md in {TEMPLATES_DIR}"
+    )
 
 
 def _render_template(template: str, variables: dict[str, Any]) -> str:

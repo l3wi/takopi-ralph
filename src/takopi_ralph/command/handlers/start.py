@@ -2,34 +2,23 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from takopi.api import CommandContext, CommandResult, RunRequest
 
+from ..context import RalphContext
 from ...circuit_breaker import CircuitBreaker
 from ...prd import PRDManager
 from ...state import StateManager
 
 
-async def handle_start(ctx: CommandContext) -> CommandResult | None:
-    """Handle /ralph start [project] command.
+async def handle_start(
+    ctx: CommandContext,
+    ralph_ctx: RalphContext,
+) -> CommandResult | None:
+    """Handle /ralph [project] [@branch] start command.
 
-    Starts a Ralph loop for the current project or specified project.
+    Starts a Ralph loop for the resolved project context.
     """
-    # Get project path from context or args
-    args = ctx.args[1:] if len(ctx.args) > 1 else []
-    project = args[0] if args else None
-
-    # Resolve project path
-    if project:
-        # Try to resolve from takopi projects
-        try:
-            resolved = ctx.runtime.resolve_run_cwd(project)
-            cwd = resolved or Path.cwd()
-        except Exception:
-            cwd = Path.cwd()
-    else:
-        cwd = Path.cwd()
+    cwd = ralph_ctx.cwd
 
     # Initialize managers
     prd_manager = PRDManager(cwd / "prd.json")
@@ -39,7 +28,8 @@ async def handle_start(ctx: CommandContext) -> CommandResult | None:
     # Check if already running
     if state_manager.is_running():
         return CommandResult(
-            text="A Ralph loop is already running. Use /ralph stop first.",
+            text=f"A Ralph loop is already running for **{ralph_ctx.context_label()}**.\n"
+            "Use /ralph stop first.",
         )
 
     # Check circuit breaker
@@ -53,7 +43,8 @@ async def handle_start(ctx: CommandContext) -> CommandResult | None:
     # Check for PRD
     if not prd_manager.exists():
         return CommandResult(
-            text="No prd.json found. Use /ralph clarify to create one first.",
+            text=f"No prd.json found in **{ralph_ctx.context_label()}**.\n"
+            "Use /ralph init or /ralph prd init to create one first.",
         )
 
     prd = prd_manager.load()
@@ -64,7 +55,7 @@ async def handle_start(ctx: CommandContext) -> CommandResult | None:
 
     # Start the session
     state_manager.start_session(
-        project_name=prd.project_name or str(cwd.name),
+        project_name=prd.project_name or ralph_ctx.context_label(),
         max_loops=100,
     )
 
@@ -76,7 +67,7 @@ async def handle_start(ctx: CommandContext) -> CommandResult | None:
 
     # Send status message
     await ctx.executor.send(
-        f"Starting Ralph loop for **{prd.project_name}**\n"
+        f"Starting Ralph loop for **{ralph_ctx.context_label()}**\n"
         f"Progress: {prd.progress_summary()}\n"
         f"First task: {story_info}"
     )

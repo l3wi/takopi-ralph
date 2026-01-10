@@ -2,28 +2,30 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from takopi.api import CommandContext, CommandResult
 
+from ..context import RalphContext
 from ...circuit_breaker import CircuitBreaker
 from ...prd import PRDManager
 from ...state import StateManager
 
 
-async def handle_status(ctx: CommandContext) -> CommandResult | None:
-    """Handle /ralph status command.
+async def handle_status(
+    ctx: CommandContext,
+    ralph_ctx: RalphContext,
+) -> CommandResult | None:
+    """Handle /ralph [project] [@branch] status command.
 
-    Shows current Ralph loop status.
+    Shows current Ralph loop status for the resolved context.
     """
-    cwd = Path.cwd()
+    cwd = ralph_ctx.cwd
 
     # Initialize managers
     prd_manager = PRDManager(cwd / "prd.json")
     state_manager = StateManager(cwd / ".ralph")
     circuit_breaker = CircuitBreaker(cwd / ".ralph")
 
-    lines = ["## Ralph Status"]
+    lines = [f"## Ralph Status: {ralph_ctx.context_label()}"]
 
     # State info
     if state_manager.exists():

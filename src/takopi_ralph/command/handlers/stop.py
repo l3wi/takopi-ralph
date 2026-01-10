@@ -2,27 +2,31 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from takopi.api import CommandContext, CommandResult
 
+from ..context import RalphContext
 from ...prd import PRDManager
 from ...state import LoopStatus, StateManager
 
 
-async def handle_stop(ctx: CommandContext) -> CommandResult | None:
-    """Handle /ralph stop command.
+async def handle_stop(
+    ctx: CommandContext,
+    ralph_ctx: RalphContext,
+) -> CommandResult | None:
+    """Handle /ralph [project] [@branch] stop command.
 
-    Gracefully stops the Ralph loop.
+    Gracefully stops the Ralph loop for the resolved context.
     """
-    cwd = Path.cwd()
+    cwd = ralph_ctx.cwd
 
     # Initialize managers
     prd_manager = PRDManager(cwd / "prd.json")
     state_manager = StateManager(cwd / ".ralph")
 
     if not state_manager.exists():
-        return CommandResult(text="No Ralph session to stop.")
+        return CommandResult(
+            text=f"No Ralph session to stop in **{ralph_ctx.context_label()}**."
+        )
 
     state = state_manager.load()
 
@@ -35,7 +39,7 @@ async def handle_stop(ctx: CommandContext) -> CommandResult | None:
     state_manager.end_session("User requested stop", LoopStatus.COMPLETED)
 
     # Generate summary
-    lines = ["## Ralph Stopped"]
+    lines = [f"## Ralph Stopped: {ralph_ctx.context_label()}"]
     lines.append(f"**Loops completed:** {state.current_loop}")
 
     if prd_manager.exists():

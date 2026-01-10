@@ -2,42 +2,48 @@
 
 Adds Ralph instructions to Claude prompts including
 the RALPH_STATUS block requirement.
+
+Templates are loaded from clarify/templates/ directory.
 """
 
 from __future__ import annotations
 
-from ..prd import PRD, UserStory
+from ..clarify.prompt_loader import load_prompt
+from ..prd import DEFAULT_FEEDBACK_COMMANDS, PRD, UserStory
 
-RALPH_STATUS_INSTRUCTIONS = '''
-## RALPH STATUS REPORTING (CRITICAL)
 
-At the END of your response, you MUST include this status block:
+def _format_feedback_commands(commands: dict[str, str]) -> str:
+    """Format feedback commands for prompt injection."""
+    lines = []
+    for i, (name, cmd) in enumerate(commands.items(), 1):
+        lines.append(f"{i}. **{name.title()}**: `{cmd}` must pass")
+    return "\n".join(lines)
 
-```
----RALPH_STATUS---
-STATUS: IN_PROGRESS | COMPLETE | BLOCKED
-TASKS_COMPLETED_THIS_LOOP: <number>
-FILES_MODIFIED: <number>
-TESTS_STATUS: PASSING | FAILING | NOT_RUN
-WORK_TYPE: IMPLEMENTATION | TESTING | DOCUMENTATION | REFACTORING
-EXIT_SIGNAL: false | true
-RECOMMENDATION: <one-line summary of what to do next>
----END_RALPH_STATUS---
-```
 
-### When to set EXIT_SIGNAL: true
-Set EXIT_SIGNAL to true when ALL of these conditions are met:
-1. All tasks in prd.json are marked complete
-2. All tests are passing (or no tests exist)
-3. No errors in the last execution
-4. You have nothing meaningful left to implement
+def _build_status_instructions(prd: PRD | None) -> str:
+    """Build status instructions with feedback commands injected."""
+    # Get feedback commands from PRD or use defaults
+    if prd and prd.feedback_commands:
+        feedback_section = _format_feedback_commands(prd.feedback_commands)
+    else:
+        feedback_section = _format_feedback_commands(DEFAULT_FEEDBACK_COMMANDS)
 
-### What NOT to do:
-- Do NOT continue with busy work when EXIT_SIGNAL should be true
-- Do NOT run tests repeatedly without implementing new features
-- Do NOT refactor code that is already working fine
-- Do NOT add features not in the specifications
-'''
+    return load_prompt("ralph_status", feedback_commands_section=feedback_section)
+
+
+def _get_quality_instructions(quality_level: str) -> str:
+    """Load quality level instructions from template.
+
+    Args:
+        quality_level: One of "prototype", "production", "library"
+
+    Returns:
+        Quality instructions text, or empty string if not found.
+    """
+    try:
+        return load_prompt(f"quality_{quality_level}")
+    except FileNotFoundError:
+        return ""
 
 
 def build_ralph_prompt(
@@ -73,6 +79,12 @@ def build_ralph_prompt(
         parts.append(f"Progress: {prd.progress_summary()}")
         parts.append("")
 
+    # Quality-level instructions
+    if prd:
+        quality_instructions = _get_quality_instructions(prd.quality_level)
+        if quality_instructions:
+            parts.append(quality_instructions)
+
     # Current story
     if current_story:
         parts.append("## Current Task")
@@ -89,8 +101,8 @@ def build_ralph_prompt(
     parts.append(user_prompt)
     parts.append("")
 
-    # Ralph instructions
-    parts.append(RALPH_STATUS_INSTRUCTIONS)
+    # Ralph instructions with dynamic feedback commands
+    parts.append(_build_status_instructions(prd))
 
     return "\n".join(parts)
 
@@ -122,6 +134,11 @@ def build_continuation_prompt(
         parts.append(f"Progress: {prd.progress_summary()}")
         parts.append("")
 
+        # Quality-level instructions
+        quality_instructions = _get_quality_instructions(prd.quality_level)
+        if quality_instructions:
+            parts.append(quality_instructions)
+
     if current_story:
         parts.append(f"Continue working on Story #{current_story.id}: {current_story.title}")
         parts.append("")
@@ -133,6 +150,6 @@ def build_continuation_prompt(
         )
 
     parts.append("")
-    parts.append(RALPH_STATUS_INSTRUCTIONS)
+    parts.append(_build_status_instructions(prd))
 
     return "\n".join(parts)

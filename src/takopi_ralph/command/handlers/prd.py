@@ -10,32 +10,37 @@ from takopi.api import CommandContext, CommandResult
 from ...clarify import ClarifyFlow
 from ...clarify.llm_analyzer import LLMAnalyzer
 from ...prd import PRD, PRDManager
+from ..context import RalphContext
 from .clarify import send_question
 
 # Session storage filename for prd init
 PRD_INIT_SESSIONS_FILE = "prd_init_sessions.json"
 
 
-async def handle_prd(ctx: CommandContext) -> CommandResult | None:
-    """Handle /ralph prd commands.
+async def handle_prd(
+    ctx: CommandContext,
+    ralph_ctx: RalphContext,
+) -> CommandResult | None:
+    """Handle /ralph [project] [@branch] prd commands.
 
     Subcommands:
     - /ralph prd           - Show PRD status
     - /ralph prd init      - Create PRD from description
     - /ralph prd clarify   - Analyze and improve PRD
     """
-    # Args: ["ralph", "prd", ...]
-    args = ctx.args[2:] if len(ctx.args) > 2 else []
+    # Args from ralph_ctx already have project/branch stripped
+    # e.g. ("prd",) or ("prd", "clarify")
+    args = ralph_ctx.args[1:] if len(ralph_ctx.args) > 1 else []
 
     if not args:
-        return await handle_prd_status(ctx)
+        return await handle_prd_status(ctx, ralph_ctx)
 
     subcommand = args[0].lower()
 
     if subcommand == "init":
-        return await handle_prd_init(ctx)
+        return await handle_prd_init(ctx, ralph_ctx)
     elif subcommand == "clarify":
-        return await handle_prd_clarify(ctx)
+        return await handle_prd_clarify(ctx, ralph_ctx)
     else:
         return CommandResult(
             text=f"Unknown prd subcommand: `{subcommand}`\n\n"
@@ -46,9 +51,12 @@ async def handle_prd(ctx: CommandContext) -> CommandResult | None:
         )
 
 
-async def handle_prd_status(ctx: CommandContext) -> CommandResult | None:
-    """Handle /ralph prd - show PRD status."""
-    cwd = Path.cwd()
+async def handle_prd_status(
+    ctx: CommandContext,
+    ralph_ctx: RalphContext,
+) -> CommandResult | None:
+    """Handle /ralph [project] [@branch] prd - show PRD status."""
+    cwd = ralph_ctx.cwd
     prd_manager = PRDManager(cwd / "prd.json")
 
     if not prd_manager.exists():
@@ -91,13 +99,16 @@ async def handle_prd_status(ctx: CommandContext) -> CommandResult | None:
     return CommandResult(text="\n".join(lines))
 
 
-async def handle_prd_init(ctx: CommandContext) -> CommandResult | None:
-    """Handle /ralph prd init - create PRD from description.
+async def handle_prd_init(
+    ctx: CommandContext,
+    ralph_ctx: RalphContext,
+) -> CommandResult | None:
+    """Handle /ralph [project] [@branch] prd init - create PRD from description.
 
     If no PRD exists, prompts user for a detailed description,
     then uses LLM to analyze and create a structured PRD.
     """
-    cwd = Path.cwd()
+    cwd = ralph_ctx.cwd
     prd_manager = PRDManager(cwd / "prd.json")
 
     # Check if PRD already exists
@@ -128,13 +139,17 @@ async def handle_prd_init(ctx: CommandContext) -> CommandResult | None:
     return None
 
 
-async def handle_prd_init_input(ctx: CommandContext, description: str) -> CommandResult | None:
+async def handle_prd_init_input(
+    ctx: CommandContext,
+    description: str,
+    ralph_ctx: RalphContext,
+) -> CommandResult | None:
     """Process the user's project description and create PRD.
 
     Uses LLM to analyze description and either ask clarifying questions
     or generate initial user stories.
     """
-    cwd = Path.cwd()
+    cwd = ralph_ctx.cwd
     prd_manager = PRDManager(cwd / "prd.json")
     flow = ClarifyFlow(cwd / ".ralph")
 
@@ -226,12 +241,15 @@ async def handle_prd_init_input(ctx: CommandContext, description: str) -> Comman
     )
 
 
-async def handle_prd_clarify(ctx: CommandContext) -> CommandResult | None:
-    """Handle /ralph prd clarify [focus] - analyze and improve PRD.
+async def handle_prd_clarify(
+    ctx: CommandContext,
+    ralph_ctx: RalphContext,
+) -> CommandResult | None:
+    """Handle /ralph [project] [@branch] prd clarify [focus] - analyze and improve PRD.
 
     Uses LLM to analyze the PRD and identify gaps or improvements.
     """
-    cwd = Path.cwd()
+    cwd = ralph_ctx.cwd
     prd_manager = PRDManager(cwd / "prd.json")
 
     # Check PRD exists
@@ -247,8 +265,8 @@ async def handle_prd_clarify(ctx: CommandContext) -> CommandResult | None:
     (cwd / ".ralph").mkdir(parents=True, exist_ok=True)
 
     # Check for focus text: /ralph prd clarify <focus>
-    # Args: ["ralph", "prd", "clarify", ...]
-    focus_args = ctx.args[3:] if len(ctx.args) > 3 else []
+    # ralph_ctx.args = ("prd", "clarify", ...) after project/branch stripped
+    focus_args = ralph_ctx.args[2:] if len(ralph_ctx.args) > 2 else []
     focus = " ".join(focus_args) if focus_args else None
 
     # Initialize flow manager

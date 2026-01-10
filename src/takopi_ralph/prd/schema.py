@@ -3,8 +3,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+# Default feedback commands for common project types
+DEFAULT_FEEDBACK_COMMANDS: dict[str, str] = {
+    "typecheck": "bun run typecheck",
+    "test": "bun run test",
+    "lint": "bun run lint",
+}
 
 
 class UserStory(BaseModel):
@@ -35,6 +43,10 @@ class PRD(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     branch_name: str | None = None
     stories: list[UserStory] = Field(default_factory=list)
+    quality_level: Literal["prototype", "production", "library"] = "production"
+    feedback_commands: dict[str, str] = Field(
+        default_factory=lambda: DEFAULT_FEEDBACK_COMMANDS.copy()
+    )
 
     def next_story(self) -> UserStory | None:
         """Return highest priority story where passes=False."""
