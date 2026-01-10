@@ -330,6 +330,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pydantic-settings"
+version = "2.12.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/4b/ac7e0aae12027748076d72a8764ff1c9d82ca75a7a52622e67ed3f765c54/pydantic_settings-2.12.0.tar.gz", hash = "sha256:005538ef951e3c2a68e1c08b292b5f2e71490def8589d4221b95dab00dafcfd0", size = 194184, upload-time = "2025-11-10T14:25:47.013Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c1/60/5d4751ba3f4a40a6891f24eec885f51afd78d208498268c734e256fb13c4/pydantic_settings-2.12.0-py3-none-any.whl", hash = "sha256:fddb9fd99a5b18da837b29710391e945b1e30c135477f484084ee513adb93809", size = 51880, upload-time = "2025-11-10T14:25:45.546Z" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.19.2"
 source = { registry = "https://pypi.org/simple" }
@@ -379,6 +393,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5e/f7/c933acc76f5208b3b00089573cf6a2bc26dc80a8aece8f52bb7d6b1855ca/pytest_cov-7.0.0.tar.gz", hash = "sha256:33c97eda2e049a0c5298e91f519302a1334c26ac65c1a483d6206fd458361af1", size = 54328, upload-time = "2025-09-09T10:57:02.113Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ee/49/1377b49de7d0c1ce41292161ea0f721913fa8722c19fb9c1e3aa0367eecb/pytest_cov-7.0.0-py3-none-any.whl", hash = "sha256:3b8e9558b16cc1479da72058bdecf8073661c7f57f7d3c5f22a1c23507f2d861", size = 22424, upload-time = "2025-09-09T10:57:00.695Z" },
+]
+
+[[package]]
+name = "python-dotenv"
+version = "1.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f0/26/19cadc79a718c5edbec86fd4919a6b6d3f681039a2f6d66d14be94e75fb9/python_dotenv-1.2.1.tar.gz", hash = "sha256:42667e897e16ab0d66954af0e60a9caa94f0fd4ecf3aaf6d2d260eec1aa36ad6", size = 44221, upload-time = "2025-10-26T15:12:10.434Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/1b/a298b06749107c305e1fe0f814c6c74aea7b2f1e10989cb30f544a1b3253/python_dotenv-1.2.1-py3-none-any.whl", hash = "sha256:b81ee9561e9ca4004139c6cbba3a238c32b03e4894671e181b671e8cb8425d61", size = 21230, upload-time = "2025-10-26T15:12:09.109Z" },
 ]
 
 [[package]]
@@ -474,22 +497,24 @@ wheels = [
 
 [[package]]
 name = "takopi"
-version = "0.8.0"
+version = "0.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "httpx" },
     { name = "markdown-it-py" },
     { name = "msgspec" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
     { name = "questionary" },
     { name = "rich" },
     { name = "structlog" },
     { name = "sulguk" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c4/d5/cc91b66e308368440c6acdbbb01bd05d2ea49ea20d1cc729a840a957ab2b/takopi-0.8.0.tar.gz", hash = "sha256:3b12280aaca69524f67d6a9e3133a2705d6974f6d2d38aa3914f451e7d4b336f", size = 48011, upload-time = "2026-01-05T08:06:34.359Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3f/69/1ebca649ab18f951c699de22aeb6f677e76dd820d7ba5b5b819914c0f1d8/takopi-0.13.0.tar.gz", hash = "sha256:6e70bcf39b20414979365dc934f183e2c6df33cf5fdbd720a288b337cdcc66a9", size = 72448, upload-time = "2026-01-09T21:27:48.907Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/b4/835cb70c57d85d71e5ddd8a0d1182bf72fc17bf8119733e5db62ad7ffc57/takopi-0.8.0-py3-none-any.whl", hash = "sha256:413f751a8c4e5c96b9a2293f9168699feeb2cf1beaa27135522b3df457d1ef44", size = 63039, upload-time = "2026-01-05T08:06:33.281Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/5d/02498dd1362314e7d2eeeeaad27e2c2fc6814e2db67f1c40ea2274698227/takopi-0.13.0-py3-none-any.whl", hash = "sha256:7a83b979468141d64d7825e96a89a764589d49309faeb9c4064bfb50ba4dded3", size = 96348, upload-time = "2026-01-09T21:27:47.563Z" },
 ]
 
 [[package]]
@@ -514,7 +539,7 @@ dev = [
 requires-dist = [
     { name = "anyio", specifier = ">=4.8.0" },
     { name = "pydantic", specifier = ">=2.10" },
-    { name = "takopi", specifier = ">=0.8" },
+    { name = "takopi", specifier = ">=0.13" },
 ]
 
 [package.metadata.requires-dev]

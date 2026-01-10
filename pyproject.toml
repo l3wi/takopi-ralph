@@ -32,7 +32,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "takopi>=0.8",
+    "takopi>=0.13",
     "pydantic>=2.10",
     "anyio>=4.8.0",
 ]
