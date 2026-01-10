@@ -37,8 +37,9 @@ async def handle_init(
     prd_manager = PRDManager(cwd / "prd.json")
     if prd_manager.exists():
         prd = prd_manager.load()
+        label = ralph_ctx.context_label()
         return CommandResult(
-            text=f"Project already initialized in **{ralph_ctx.context_label()}**: **{prd.project_name}**\n"
+            text=f"Project already initialized in **{label}**: **{prd.project_name}**\n"
             f"Progress: {prd.progress_summary()}\n\n"
             f"Use `/ralph prd` to view status or `/ralph start` to begin."
         )

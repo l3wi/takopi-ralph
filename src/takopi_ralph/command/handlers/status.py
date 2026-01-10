@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from takopi.api import CommandContext, CommandResult
 
-from ..context import RalphContext
 from ...circuit_breaker import CircuitBreaker
 from ...prd import PRDManager
 from ...state import StateManager
+from ..context import RalphContext
 
 
 async def handle_status(

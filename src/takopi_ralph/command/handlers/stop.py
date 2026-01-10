@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from takopi.api import CommandContext, CommandResult
 
-from ..context import RalphContext
 from ...prd import PRDManager
 from ...state import LoopStatus, StateManager
+from ..context import RalphContext
 
 
 async def handle_stop(
