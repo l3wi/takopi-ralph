@@ -1,0 +1,50 @@
+[project]
+name = "takopi-ralph"
+version = "0.1.0"
+description = "Autonomous Ralph coding loop plugin for takopi"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.14"
+dependencies = [
+    "takopi>=0.8",
+    "pydantic>=2.12",
+    "anyio>=4.12.0",
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
+]
+
+[project.entry-points."takopi.engine_backends"]
+ralph = "takopi_ralph.engine.backend:BACKEND"
+
+[project.entry-points."takopi.command_backends"]
+ralph = "takopi_ralph.command.backend:BACKEND"
+
+[build-system]
+requires = ["uv_build>=0.9.18,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0",
+    "pytest-anyio>=0.0",
+    "pytest-cov>=7.0",
+    "ruff>=0.14",
+]
+
+[tool.pytest.ini_options]
+addopts = ["--cov=takopi_ralph", "--cov-report=term-missing"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.uv.sources]
+takopi = { path = "../../../projects/takopi", editable = true }
