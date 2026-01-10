@@ -63,14 +63,16 @@ async def handle_start(ctx: CommandContext) -> CommandResult | None:
         )
 
     # Start the session
-    state = state_manager.start_session(
+    state_manager.start_session(
         project_name=prd.project_name or str(cwd.name),
         max_loops=100,
     )
 
     # Get next story
     next_story = prd.next_story()
-    story_info = f"Story #{next_story.id}: {next_story.title}" if next_story else "No pending stories"
+    story_info = (
+        f"Story #{next_story.id}: {next_story.title}" if next_story else "No pending stories"
+    )
 
     # Send status message
     await ctx.executor.send(
@@ -80,7 +82,7 @@ async def handle_start(ctx: CommandContext) -> CommandResult | None:
     )
 
     # Run the first iteration using the ralph engine
-    result = await ctx.executor.run_one(
+    await ctx.executor.run_one(
         RunRequest(
             prompt=f"Start working on the project. Focus on: {story_info}",
             engine="ralph",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
 from dataclasses import dataclass
 
@@ -93,19 +94,15 @@ def parse_ralph_status(text: str) -> RalphStatus | None:
     tests_match = _FIELD_PATTERNS["tests_status"].search(block_content)
     if tests_match:
         status_str = tests_match.group(1).upper()
-        try:
+        with contextlib.suppress(ValueError):
             result.tests_status = TestsStatus(status_str)
-        except ValueError:
-            pass
 
     # Work type
     work_match = _FIELD_PATTERNS["work_type"].search(block_content)
     if work_match:
         work_str = work_match.group(1).upper()
-        try:
+        with contextlib.suppress(ValueError):
             result.work_type = WorkType(work_str)
-        except ValueError:
-            pass
 
     # Exit signal
     exit_match = _FIELD_PATTERNS["exit_signal"].search(block_content)

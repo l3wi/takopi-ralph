@@ -1,21 +1,46 @@
 [project]
 name = "takopi-ralph"
 version = "0.1.0"
-description = "Autonomous Ralph coding loop plugin for takopi"
+description = "Autonomous coding loop plugin for Takopi - PRD-driven development with circuit breaker protection"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.14"
-dependencies = [
-    "takopi>=0.8",
-    "pydantic>=2.12",
-    "anyio>=4.12.0",
+authors = [
+    { name = "Lewis Freiberg", email = "lewis@freiberg.dev" },
+]
+keywords = [
+    "takopi",
+    "plugin",
+    "autonomous",
+    "coding",
+    "llm",
+    "claude",
+    "ai",
+    "development",
 ]
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Code Generators",
+    "Typing :: Typed",
 ]
+dependencies = [
+    "takopi>=0.8",
+    "pydantic>=2.10",
+    "anyio>=4.8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/l3wi/takopi-ralph"
+Repository = "https://github.com/l3wi/takopi-ralph"
+Issues = "https://github.com/l3wi/takopi-ralph/issues"
 
 [project.entry-points."takopi.engine_backends"]
 ralph = "takopi_ralph.engine.backend:BACKEND"
@@ -24,15 +49,15 @@ ralph = "takopi_ralph.engine.backend:BACKEND"
 ralph = "takopi_ralph.command.backend:BACKEND"
 
 [build-system]
-requires = ["uv_build>=0.9.18,<0.10.0"]
-build-backend = "uv_build"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0",
+    "pytest>=8.0",
     "pytest-anyio>=0.0",
-    "pytest-cov>=7.0",
-    "ruff>=0.14",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
 ]
 
 [tool.pytest.ini_options]
@@ -41,10 +66,18 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py314"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
-[tool.uv.sources]
-takopi = { path = "../../../projects/takopi", editable = true }
+[tool.hatch.build.targets.wheel]
+packages = ["src/takopi_ralph"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+]

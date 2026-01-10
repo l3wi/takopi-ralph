@@ -475,7 +475,7 @@ wheels = [
 [[package]]
 name = "takopi"
 version = "0.8.0"
-source = { editable = "../../../projects/takopi" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "httpx" },
@@ -487,27 +487,9 @@ dependencies = [
     { name = "sulguk" },
     { name = "typer" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "anyio", specifier = ">=4.12.0" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "markdown-it-py" },
-    { name = "msgspec", specifier = ">=0.20.0" },
-    { name = "questionary", specifier = ">=2.1.1" },
-    { name = "rich", specifier = ">=14.2.0" },
-    { name = "structlog", specifier = ">=25.5.0" },
-    { name = "sulguk", specifier = ">=0.11.1" },
-    { name = "typer", specifier = ">=0.21.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest-anyio", specifier = ">=0.0.0" },
-    { name = "pytest-cov", specifier = ">=7.0.0" },
-    { name = "ruff", specifier = ">=0.14.10" },
-    { name = "ty", specifier = ">=0.0.8" },
+sdist = { url = "https://files.pythonhosted.org/packages/c4/d5/cc91b66e308368440c6acdbbb01bd05d2ea49ea20d1cc729a840a957ab2b/takopi-0.8.0.tar.gz", hash = "sha256:3b12280aaca69524f67d6a9e3133a2705d6974f6d2d38aa3914f451e7d4b336f", size = 48011, upload-time = "2026-01-05T08:06:34.359Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f4/b4/835cb70c57d85d71e5ddd8a0d1182bf72fc17bf8119733e5db62ad7ffc57/takopi-0.8.0-py3-none-any.whl", hash = "sha256:413f751a8c4e5c96b9a2293f9168699feeb2cf1beaa27135522b3df457d1ef44", size = 63039, upload-time = "2026-01-05T08:06:33.281Z" },
 ]
 
 [[package]]
@@ -530,17 +512,17 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anyio", specifier = ">=4.12.0" },
-    { name = "pydantic", specifier = ">=2.12" },
-    { name = "takopi", editable = "../../../projects/takopi" },
+    { name = "anyio", specifier = ">=4.8.0" },
+    { name = "pydantic", specifier = ">=2.10" },
+    { name = "takopi", specifier = ">=0.8" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "pytest", specifier = ">=9.0" },
+    { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-anyio", specifier = ">=0.0" },
-    { name = "pytest-cov", specifier = ">=7.0" },
-    { name = "ruff", specifier = ">=0.14" },
+    { name = "pytest-cov", specifier = ">=6.0" },
+    { name = "ruff", specifier = ">=0.8" },
 ]
 
 [[package]]
