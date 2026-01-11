@@ -1,26 +1,19 @@
 # takopi-ralph
 
-**Autonomous Ralph coding loop plugin for [takopi](https://github.com/banteg/takopi)**
+**Autonomous coding loop plugin for [takopi](https://github.com/banteg/takopi)**
 
 Ship features while you sleep. Ralph runs AI agents in a loop until all tasks are complete, with built-in safeguards to prevent runaway execution.
 
 ---
 
-## Summary
+## Requirements
 
-**takopi-ralph** extends takopi with an autonomous coding loop system inspired by [Ralph](https://github.com/frankbria/ralph-claude-code). It provides:
-
-- **Interactive requirements gathering** via Telegram inline keyboards
-- **Autonomous loop execution** that implements features one story at a time
-- **Circuit breaker protection** to halt when stuck
-- **Progress tracking** with structured status reporting
-
-The system works by:
-1. Gathering requirements through `/ralph clarify`
-2. Generating a `prd.json` with user stories
-3. Running Claude in a loop, implementing one story per iteration
-4. Analyzing responses for completion signals
-5. Halting when all stories pass or the circuit breaker trips
+| Dependency | Version | Purpose |
+|------------|---------|---------|
+| Python | 3.14+ | Runtime |
+| [takopi](https://github.com/banteg/takopi) | >= 0.15 | Telegram bot framework |
+| [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) | Latest | AI agent backend |
+| Git | Any | File change detection |
 
 ---
 
@@ -29,11 +22,13 @@ The system works by:
 ### 1. Install
 
 ```bash
-# Install takopi-ralph
 uv tool install takopi-ralph
+```
 
-# Or install from source
-git clone https://github.com/yourname/takopi-ralph
+Or from source:
+
+```bash
+git clone https://github.com/l3wi/takopi-ralph
 cd takopi-ralph
 uv pip install -e .
 ```
@@ -45,22 +40,19 @@ Add to `~/.takopi/takopi.toml`:
 ```toml
 [ralph]
 max_loops = 100
-
-[plugins.ralph]
-prd_path = "prd.json"
 ```
 
-### 3. Gather Requirements
+### 3. Initialize
 
 Start takopi and send:
 
 ```
-/ralph clarify "Task management app"
+/ralph init
 ```
 
-Answer the questions via inline keyboard buttons. This generates `prd.json`.
+Answer the interactive questions to generate your `prd.json`.
 
-### 4. Start the Loop
+### 4. Start
 
 ```
 /ralph start
@@ -68,149 +60,211 @@ Answer the questions via inline keyboard buttons. This generates `prd.json`.
 
 Ralph will autonomously implement each user story until complete.
 
-### 5. Monitor Progress
+---
+
+## Lifecycle
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              LIFECYCLE                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  INIT                         LOOP                         EXIT          │
+│  ────                         ────                         ────          │
+│                                                                          │
+│  /ralph init                  /ralph start                 Automatic     │
+│       │                            │                            │        │
+│       ▼                            ▼                            │        │
+│  ┌─────────┐                 ┌───────────┐                      │        │
+│  │ Answer  │                 │ Load PRD  │◄─────────────────────┤        │
+│  │questions│                 │ next_story│                      │        │
+│  └────┬────┘                 └─────┬─────┘                      │        │
+│       │                            │                            │        │
+│       ▼                            ▼                            │        │
+│  ┌─────────┐                 ┌───────────┐                      │        │
+│  │ Generate│                 │  Augment  │                      │        │
+│  │ prd.json│                 │  prompt   │                      │        │
+│  └─────────┘                 └─────┬─────┘                      │        │
+│                                    │                            │        │
+│                                    ▼                            │        │
+│                              ┌───────────┐                      │        │
+│                              │ Run Claude│                      │        │
+│                              │    CLI    │                      │        │
+│                              └─────┬─────┘                      │        │
+│                                    │                            │        │
+│                                    ▼                            │        │
+│                              ┌───────────┐     ┌────────────┐   │        │
+│                              │  Analyze  │────►│  Update    │   │        │
+│                              │ response  │     │circuit brkr│   │        │
+│                              └─────┬─────┘     └────────────┘   │        │
+│                                    │                            │        │
+│                                    ▼                            │        │
+│                              ┌───────────┐                      │        │
+│                              │Exit signal│──────────────────────┘        │
+│                              │  check    │                               │
+│                              └─────┬─────┘                               │
+│                                    │ no                                  │
+│                                    ▼                                     │
+│                               Loop again                                 │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Init Phase
+
+1. `/ralph init` starts an interactive session
+2. Questions cover: core requirements, target users, integrations, edge cases, quality level
+3. Answers are used to generate `prd.json` with user stories
+
+### Loop Phase
+
+1. Load `prd.json` and find the next incomplete story
+2. Augment the prompt with Ralph instructions and `RALPH_STATUS` block requirements
+3. Run Claude CLI with the augmented prompt
+4. Parse the `---RALPH_STATUS---` block from Claude's response
+5. Update circuit breaker state based on file changes and errors
+6. Check exit conditions
+
+### Exit Conditions
+
+- `EXIT_SIGNAL: true` in status block
+- All stories have `passes: true`
+- Circuit breaker is `OPEN`
+- Max loops reached
+- 3+ consecutive test-only loops (test saturation)
+
+---
+
+## Context Targeting
+
+Ralph supports targeting different projects and branches:
+
+```
+/ralph [project] [@branch] <command>
+```
+
+### Examples
+
+| Command | Description |
+|---------|-------------|
+| `/ralph start` | Current directory |
+| `/ralph myproject start` | Specific project |
+| `/ralph @feature start` | Current project, feature worktree |
+| `/ralph myproject @feature prd` | Project on feature branch |
+
+### How It Works
+
+1. **Project resolution**: Takopi resolves project aliases from your `takopi.toml`
+2. **Branch resolution**: `@branch` targets git worktrees managed by takopi
+3. **Fallback**: Without project/branch, uses current working directory
+
+### Project Configuration
+
+Projects are defined in your takopi config:
+
+```toml
+[projects.myproject]
+path = "/path/to/myproject"
+```
+
+---
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/ralph init` | Interactive project setup |
+| `/ralph prd` | Show PRD status and progress |
+| `/ralph prd init <desc>` | Create PRD from description |
+| `/ralph prd clarify [focus]` | Analyze and improve PRD |
+| `/ralph start` | Start the autonomous loop |
+| `/ralph status` | Show loop progress and circuit state |
+| `/ralph stop` | Gracefully stop the loop |
+| `/ralph reset` | Reset circuit breaker |
+| `/ralph reset --all` | Reset circuit breaker and clear state |
+| `/ralph help` | Show command help |
+
+---
+
+## Monitoring Status
+
+### Check Progress
 
 ```
 /ralph status
 ```
 
----
+Returns:
+- Current loop number
+- Stories completed / total
+- Circuit breaker state (CLOSED/HALF_OPEN/OPEN)
+- Last work type (IMPLEMENTATION/TESTING/etc.)
+- Recent file changes
 
-## Features
+### State Files
 
-### Engine Backend (`ralph`)
+Ralph creates a `.ralph/` directory in your project:
 
-Wraps Claude with Ralph loop semantics:
+| File | Purpose |
+|------|---------|
+| `state.json` | Loop state, history, exit reason |
+| `session.json` | Claude session ID for continuations |
+| `circuit_breaker.json` | Circuit state and thresholds |
+| `clarify_sessions.json` | Active clarify sessions |
 
-- **Prompt augmentation** - Injects Ralph instructions and `---RALPH_STATUS---` block requirement
-- **Response analysis** - Parses status blocks to detect completion, test-only loops, and errors
-- **State persistence** - Tracks loop progress across restarts
-- **Circuit breaker integration** - Stops execution when stuck
+### Debugging Stuck Loops
 
-### Command Backend (`/ralph`)
-
-| Command | Description |
-|---------|-------------|
-| `/ralph clarify <topic>` | Interactive requirements gathering via Telegram buttons |
-| `/ralph start [project]` | Start the autonomous loop |
-| `/ralph status` | Show loop progress and circuit breaker state |
-| `/ralph stop` | Gracefully stop the loop |
-| `/ralph reset [--all]` | Reset circuit breaker (add `--all` to clear state) |
-| `/ralph help` | Show command help |
-
-### Circuit Breaker
-
-Prevents runaway token consumption using a state machine:
-
-```
-CLOSED ──(2 loops no progress)──> HALF_OPEN ──(threshold)──> OPEN
-   ^                                    │
-   └────(progress detected)─────────────┘
-```
-
-| Threshold | Default | Description |
-|-----------|---------|-------------|
-| `NO_PROGRESS_THRESHOLD` | 3 | Opens after N loops with no file changes |
-| `SAME_ERROR_THRESHOLD` | 5 | Opens after N loops with repeated errors |
-
-### Response Analyzer
-
-Detects loop control signals:
-
-1. **Structured parsing** - Extracts `---RALPH_STATUS---` blocks from Claude responses
-2. **Text fallback** - Detects completion keywords when no status block
-3. **Git integration** - Counts actual file changes via `git diff`
-4. **Error filtering** - Two-stage filtering to avoid JSON field false positives
-
-### `/ralph clarify` Flow
-
-Interactive requirements gathering:
-
-1. Presents questions as **inline keyboard buttons**
-2. Categories: core requirements, users, integrations, edge cases, quality
-3. Each answer updates the session state
-4. Generates `prd.json` with user stories and acceptance criteria
+1. Check `/ralph status` for circuit breaker state
+2. Review `.ralph/state.json` for loop history
+3. Look at recent `RALPH_STATUS` blocks in conversation
+4. If circuit breaker is OPEN, run `/ralph reset`
 
 ---
 
-## Architecture
+## Configuration
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Telegram                                │
-│  /ralph clarify → inline keyboards → answers → prd.json         │
-│  /ralph start   → RalphRunner → Claude CLI → response analysis  │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      takopi-ralph                               │
-├─────────────────────────────────────────────────────────────────┤
-│  Engine Backend                                                 │
-│  ├── RalphRunner          Wraps Claude with loop semantics      │
-│  ├── PromptAugmenter      Adds RALPH_STATUS requirement         │
-│  └── ResponseAnalyzer     Parses status, detects exit signals   │
-├─────────────────────────────────────────────────────────────────┤
-│  Command Backend                                                │
-│  ├── /ralph start         Initializes and runs loop             │
-│  ├── /ralph clarify       Interactive requirements gathering    │
-│  ├── /ralph status        Shows progress and circuit state      │
-│  └── /ralph stop/reset    Loop control                          │
-├─────────────────────────────────────────────────────────────────┤
-│  State Management                                               │
-│  ├── PRDManager           prd.json CRUD operations              │
-│  ├── StateManager         Loop state persistence                │
-│  └── CircuitBreaker       Runaway protection                    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Configuration Reference
-
-### `[ralph]` section
+Add to `~/.takopi/takopi.toml`:
 
 ```toml
 [ralph]
 # Maximum loop iterations before forced exit
 max_loops = 100
 
-# Claude model to use (optional, uses Claude default)
-model = "sonnet"
-
-# Allowed tools for Claude (optional)
-allowed_tools = ["Bash", "Read", "Edit", "Write"]
-
-# Circuit breaker thresholds
-circuit_breaker_threshold = 3
-error_threshold = 5
-```
-
-### `[plugins.ralph]` section
-
-```toml
-[plugins.ralph]
-# Path to prd.json relative to project
+# Path to prd.json relative to project root
 prd_path = "prd.json"
 
-# State directory for Ralph files
+# Directory for Ralph state files
 state_dir = ".ralph"
 
-# Prompt template (default or custom path)
-prompt_template = "default"
+# Inner engine to use (only "claude" supported currently)
+engine = "claude"
+```
+
+All options have sensible defaults. Minimal config:
+
+```toml
+[ralph]
+max_loops = 100
 ```
 
 ---
 
-## prd.json Format
+## PRD Format
 
-The Product Requirements Document tracks user stories:
+The Product Requirements Document (`prd.json`) tracks user stories:
 
 ```json
 {
   "project_name": "My App",
-  "description": "A task management application\nTarget users: End users\nScope: Basic CRUD",
+  "description": "A task management application",
   "created_at": "2026-01-10T12:00:00Z",
+  "branch_name": null,
+  "quality_level": "production",
+  "feedback_commands": {
+    "typecheck": "bun run typecheck",
+    "test": "bun run test",
+    "lint": "bun run lint"
+  },
   "stories": [
     {
       "id": 1,
@@ -218,25 +272,10 @@ The Product Requirements Document tracks user stories:
       "description": "Initialize project with basic structure",
       "acceptance_criteria": [
         "Project structure created",
-        "Dependencies installed",
-        "Basic configuration in place"
+        "Dependencies installed"
       ],
       "passes": false,
       "priority": 1,
-      "notes": ""
-    },
-    {
-      "id": 2,
-      "title": "User Authentication",
-      "description": "Implement JWT tokens authentication",
-      "acceptance_criteria": [
-        "Users can sign up",
-        "Users can log in",
-        "Sessions are secure",
-        "Logout works correctly"
-      ],
-      "passes": false,
-      "priority": 2,
       "notes": ""
     }
   ]
@@ -254,6 +293,28 @@ The Product Requirements Document tracks user stories:
 | `passes` | bool | Whether story is complete |
 | `priority` | int | Execution order (lower = higher priority) |
 | `notes` | string | Optional notes from implementation |
+
+### Quality Levels
+
+| Level | Description |
+|-------|-------------|
+| `prototype` | Quick implementation, minimal tests |
+| `production` | Full implementation with tests |
+| `library` | Library-grade with comprehensive tests and docs |
+
+### Feedback Commands
+
+Customize validation commands for your stack:
+
+```json
+{
+  "feedback_commands": {
+    "typecheck": "bun run typecheck",
+    "test": "pytest -q",
+    "lint": "ruff check ."
+  }
+}
+```
 
 ---
 
@@ -283,72 +344,36 @@ Set `EXIT_SIGNAL: true` when:
 
 ---
 
-## How It Works
+## Circuit Breaker
 
-### Loop Execution Flow
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  1. Check circuit breaker (can_execute?)                     │
-│                    │                                         │
-│                    ▼                                         │
-│  2. Load prd.json, get next_story()                          │
-│                    │                                         │
-│                    ▼                                         │
-│  3. Augment prompt with Ralph instructions                   │
-│                    │                                         │
-│                    ▼                                         │
-│  4. Run Claude CLI with augmented prompt                     │
-│                    │                                         │
-│                    ▼                                         │
-│  5. Parse ---RALPH_STATUS--- from response                   │
-│                    │                                         │
-│                    ▼                                         │
-│  6. Update circuit breaker (files_changed, has_errors)       │
-│                    │                                         │
-│                    ▼                                         │
-│  7. Check exit conditions:                                   │
-│     - EXIT_SIGNAL: true?                                     │
-│     - All stories complete?                                  │
-│     - Circuit breaker OPEN?                                  │
-│                    │                                         │
-│           ┌───────┴───────┐                                  │
-│           │               │                                  │
-│        Continue        Exit                                  │
-│           │               │                                  │
-│           └───────────────┘                                  │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### Clarify Flow
+Prevents runaway token consumption using a state machine:
 
 ```
-User: /ralph clarify "My App"
-         │
-         ▼
-┌─────────────────────────────────────┐
-│  "What is the minimum viable        │
-│   version?"                         │
-│                                     │
-│  [Basic CRUD]                       │
-│  [Full feature set]                 │
-│  [Prototype only]                   │
-│  [Skip]                             │
-└─────────────────────────────────────┘
-         │
-         │ User taps button
-         ▼
-┌─────────────────────────────────────┐
-│  Record answer, send next question  │
-│  ... repeat for all questions ...   │
-└─────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│  Build prd.json from answers        │
-│  Save to project directory          │
-│  "PRD saved! Run /ralph start"      │
-└─────────────────────────────────────┘
+CLOSED ──(2 loops no progress)──► HALF_OPEN ──(threshold)──► OPEN
+   ▲                                    │
+   └────(progress detected)─────────────┘
+```
+
+### States
+
+| State | Description |
+|-------|-------------|
+| `CLOSED` | Normal operation, loop continues |
+| `HALF_OPEN` | Warning state, monitoring for progress |
+| `OPEN` | Loop halted, requires manual reset |
+
+### Thresholds
+
+| Threshold | Default | Description |
+|-----------|---------|-------------|
+| No progress | 3 | Opens after N loops with no file changes |
+| Same error | 5 | Opens after N loops with repeated errors |
+
+### Reset
+
+```
+/ralph reset         # Reset circuit breaker only
+/ralph reset --all   # Reset circuit breaker and clear all state
 ```
 
 ---
@@ -359,7 +384,7 @@ After running Ralph, your project will have:
 
 ```
 my-project/
-├── prd.json                    # User stories (generated by /ralph clarify)
+├── prd.json                    # User stories (from /ralph init)
 ├── .ralph/
 │   ├── state.json              # Loop state and history
 │   ├── session.json            # Claude session ID
@@ -383,30 +408,24 @@ The circuit breaker opens when:
 /ralph reset
 ```
 
-Or reset everything:
-```
-/ralph reset --all
-```
+### No RALPH_STATUS Block
 
-### No RALPH_STATUS block in response
-
-If Claude doesn't include the status block, the analyzer falls back to text analysis. This is less reliable. Check:
-
+If Claude doesn't include the status block, the analyzer falls back to text analysis. Check:
 1. The prompt template includes status block instructions
 2. Claude isn't truncating the response
 
-### Loop exits immediately
+### Loop Exits Immediately
 
 Check:
-1. prd.json exists and has stories with `passes: false`
+1. `prd.json` exists and has stories with `passes: false`
 2. Circuit breaker is CLOSED (`/ralph status`)
-3. No syntax errors in prd.json
+3. No syntax errors in `prd.json`
 
-### Clarify session expired
+### Clarify Session Expired
 
-Clarify sessions are stored temporarily. If you get "Session expired":
+Clarify sessions are stored temporarily. Start a new one:
 ```
-/ralph clarify "Your topic"  # Start a new session
+/ralph init
 ```
 
 ---
@@ -416,22 +435,17 @@ Clarify sessions are stored temporarily. If you get "Session expired":
 ### Setup
 
 ```bash
-git clone https://github.com/yourname/takopi-ralph
+git clone https://github.com/l3wi/takopi-ralph
 cd takopi-ralph
 uv sync --dev
 ```
 
-### Run Tests
+### Commands
 
 ```bash
-uv run pytest
-```
-
-### Lint
-
-```bash
-uv run ruff check .
-uv run ruff format .
+uv run pytest              # Run tests with coverage
+uv run ruff check .        # Lint
+uv run ruff format .       # Format
 ```
 
 ### Package Structure
@@ -446,16 +460,9 @@ src/takopi_ralph/
 ├── circuit_breaker/     # Runaway protection
 ├── analysis/            # Response parsing
 ├── clarify/             # Interactive requirements
-└── templates/           # Prompt templates
+│   └── templates/       # Prompt templates
+└── init/                # Initialization flow
 ```
-
----
-
-## Requirements
-
-- Python 3.14+
-- takopi >= 0.14
-- Claude Code CLI (`npm install -g @anthropic-ai/claude-code`)
 
 ---
 

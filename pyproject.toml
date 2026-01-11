@@ -1,6 +1,6 @@
 [project]
 name = "takopi-ralph"
-version = "0.2.0"
+version = "0.3.0"
 description = "Autonomous coding loop plugin for Takopi - PRD-driven development with circuit breaker protection"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -32,7 +32,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "takopi>=0.13",
+    "takopi>=0.15",
     "pydantic>=2.10",
     "anyio>=4.8.0",
 ]
@@ -61,8 +61,8 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-addopts = ["--cov=takopi_ralph", "--cov-report=term-missing"]
 testpaths = ["tests"]
+# Run with coverage: uv run pytest --cov=takopi_ralph --cov-report=term-missing
 
 [tool.ruff]
 line-length = 100

@@ -24,16 +24,12 @@ async def handle_stop(
     state_manager = StateManager(cwd / ".ralph")
 
     if not state_manager.exists():
-        return CommandResult(
-            text=f"No Ralph session to stop in **{ralph_ctx.context_label()}**."
-        )
+        return CommandResult(text=f"No Ralph session to stop in **{ralph_ctx.context_label()}**.")
 
     state = state_manager.load()
 
     if state.status != LoopStatus.RUNNING:
-        return CommandResult(
-            text=f"Ralph is not running. Current status: {state.status.value}"
-        )
+        return CommandResult(text=f"Ralph is not running. Current status: {state.status.value}")
 
     # End session
     state_manager.end_session("User requested stop", LoopStatus.COMPLETED)

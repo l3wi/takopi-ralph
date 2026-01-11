@@ -165,9 +165,7 @@ class RalphCommand:
 
         # Parse project/branch from args
         project_aliases = set(ctx.runtime.project_aliases())
-        project, branch, remaining_args = _parse_project_branch(
-            ctx.args, project_aliases
-        )
+        project, branch, remaining_args = _parse_project_branch(ctx.args, project_aliases)
 
         # Resolve to RalphContext
         try:
@@ -201,9 +199,7 @@ class RalphCommand:
 
         handler = handlers.get(subcommand)
         if handler is None:
-            return CommandResult(
-                text=f"Unknown command: `{subcommand}`\n\n{HELP_TEXT}"
-            )
+            return CommandResult(text=f"Unknown command: `{subcommand}`\n\n{HELP_TEXT}")
 
         return await handler(ctx, ralph_ctx)
 

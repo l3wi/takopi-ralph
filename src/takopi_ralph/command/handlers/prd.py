@@ -254,10 +254,7 @@ async def handle_prd_clarify(
 
     # Check PRD exists
     if not prd_manager.exists():
-        return CommandResult(
-            text="**No PRD found**\n\n"
-            "Use `/ralph prd init` to create one first."
-        )
+        return CommandResult(text="**No PRD found**\n\nUse `/ralph prd init` to create one first.")
 
     prd = prd_manager.load()
 
@@ -273,8 +270,7 @@ async def handle_prd_clarify(
     flow = ClarifyFlow(cwd / ".ralph")
 
     await ctx.executor.send(
-        f"**Analyzing {prd.project_name} PRD...**"
-        + (f"\n*Focus: {focus}*" if focus else "")
+        f"**Analyzing {prd.project_name} PRD...**" + (f"\n*Focus: {focus}*" if focus else "")
     )
 
     # Use LLM to analyze PRD
@@ -304,8 +300,7 @@ async def handle_prd_clarify(
         )
 
         await ctx.executor.send(
-            f"**{result.analysis}**\n\n"
-            f"I have {len(result.questions)} questions to improve the PRD."
+            f"**{result.analysis}**\n\nI have {len(result.questions)} questions to improve the PRD."
         )
 
         await send_question(ctx, session)

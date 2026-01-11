@@ -35,17 +35,25 @@ def build_clarify_keyboard(
 
     # Add option buttons (one per row for clarity)
     for i, option in enumerate(options):
-        buttons.append([{
-            "text": option,
-            "callback_data": f"{CLARIFY_CALLBACK_PREFIX}{session_id}:{i}",
-        }])
+        buttons.append(
+            [
+                {
+                    "text": option,
+                    "callback_data": f"{CLARIFY_CALLBACK_PREFIX}{session_id}:{i}",
+                }
+            ]
+        )
 
     # Add skip button
     if include_skip:
-        buttons.append([{
-            "text": "Skip this question",
-            "callback_data": f"{CLARIFY_CALLBACK_PREFIX}{session_id}:skip",
-        }])
+        buttons.append(
+            [
+                {
+                    "text": "Skip this question",
+                    "callback_data": f"{CLARIFY_CALLBACK_PREFIX}{session_id}:skip",
+                }
+            ]
+        )
 
     return {"inline_keyboard": buttons}
 
@@ -201,9 +209,7 @@ async def _complete_session(
     # Build response
     if session.mode == "enhance":
         if added_count > 0:
-            new_stories_text = "\n".join(
-                f"  {s.id}. {s.title}" for s in prd.stories[-added_count:]
-            )
+            new_stories_text = "\n".join(f"  {s.id}. {s.title}" for s in prd.stories[-added_count:])
             return CommandResult(
                 text=f"**PRD enhanced for {prd.project_name}**\n\n"
                 f"{result.analysis}\n\n"

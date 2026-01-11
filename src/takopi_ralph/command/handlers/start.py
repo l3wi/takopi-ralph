@@ -36,8 +36,7 @@ async def handle_start(
     if not circuit_breaker.can_execute():
         status = circuit_breaker.get_status()
         return CommandResult(
-            text=f"Circuit breaker is OPEN: {status.get('reason')}\n"
-            f"Use /ralph reset to reset it.",
+            text=f"Circuit breaker is OPEN: {status.get('reason')}\nUse /ralph reset to reset it.",
         )
 
     # Check for PRD

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 
 from .models import LoopResult, LoopStatus, RalphState
@@ -25,19 +26,37 @@ class StateManager:
         return self.state_file.exists()
 
     def load(self) -> RalphState:
-        """Load state from file. Creates new state if not exists."""
+        """Load state from file. Creates new state if not exists or corrupted."""
         if not self.exists():
             return RalphState()
 
-        content = self.state_file.read_text()
-        data = json.loads(content)
-        return RalphState.model_validate(data)
+        try:
+            content = self.state_file.read_text()
+            data = json.loads(content)
+            return RalphState.model_validate(data)
+        except (json.JSONDecodeError, ValueError, OSError):
+            # Corrupted or unreadable file, reset to clean state
+            return RalphState()
 
     def save(self, state: RalphState) -> None:
-        """Save state to file."""
+        """Save state to file atomically."""
         self._ensure_dir()
         content = state.model_dump_json(indent=2)
-        self.state_file.write_text(content)
+        self._atomic_write(self.state_file, content)
+
+    def _atomic_write(self, path: Path, content: str) -> None:
+        """Write content to file atomically using temp file + rename."""
+        # Write to temp file in same directory (for same filesystem)
+        fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+        try:
+            with open(fd, "w") as f:
+                f.write(content)
+            # Atomic rename on POSIX systems
+            Path(tmp_path).replace(path)
+        except Exception:
+            # Clean up temp file on failure
+            Path(tmp_path).unlink(missing_ok=True)
+            raise
 
     def update(self, result: LoopResult) -> RalphState:
         """Update state with a new loop result."""
@@ -75,15 +94,18 @@ class StateManager:
         if not self.session_file.exists():
             return None
 
-        content = self.session_file.read_text()
-        data = json.loads(content)
-        return data.get("session_id")
+        try:
+            content = self.session_file.read_text()
+            data = json.loads(content)
+            return data.get("session_id")
+        except (json.JSONDecodeError, ValueError, OSError):
+            return None
 
     def set_session_id(self, session_id: str) -> None:
-        """Store the Claude session ID."""
+        """Store the Claude session ID atomically."""
         self._ensure_dir()
         data = {"session_id": session_id}
-        self.session_file.write_text(json.dumps(data, indent=2))
+        self._atomic_write(self.session_file, json.dumps(data, indent=2))
 
     def reset(self) -> None:
         """Reset all state files."""

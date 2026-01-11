@@ -37,9 +37,7 @@ def load_prompt(name: str, **variables: Any) -> str:
             template = template_path.read_text()
             return _render_template(template, variables)
 
-    raise FileNotFoundError(
-        f"Template not found: {name}.txt or {name}.md in {TEMPLATES_DIR}"
-    )
+    raise FileNotFoundError(f"Template not found: {name}.txt or {name}.md in {TEMPLATES_DIR}")
 
 
 def _render_template(template: str, variables: dict[str, Any]) -> str:
@@ -49,6 +47,7 @@ def _render_template(template: str, variables: dict[str, Any]) -> str:
     - {{variable}} - Simple substitution
     - Empty string if variable not provided
     """
+
     def replace_var(match: re.Match[str]) -> str:
         var_name = match.group(1)
         value = variables.get(var_name, "")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 
 from .schema import PRD, UserStory
@@ -19,18 +20,34 @@ class PRDManager:
         return self.prd_path.exists()
 
     def load(self) -> PRD:
-        """Load PRD from file. Creates empty PRD if file doesn't exist."""
+        """Load PRD from file. Creates empty PRD if file doesn't exist or corrupted."""
         if not self.exists():
             return PRD(project_name="", description="")
 
-        content = self.prd_path.read_text()
-        data = json.loads(content)
-        return PRD.model_validate(data)
+        try:
+            content = self.prd_path.read_text()
+            data = json.loads(content)
+            return PRD.model_validate(data)
+        except (json.JSONDecodeError, ValueError, OSError):
+            # Corrupted or unreadable file, return empty PRD
+            return PRD(project_name="", description="")
 
     def save(self, prd: PRD) -> None:
-        """Save PRD to file."""
+        """Save PRD to file atomically."""
         content = prd.model_dump_json(indent=2)
-        self.prd_path.write_text(content)
+        self._atomic_write(self.prd_path, content)
+
+    def _atomic_write(self, path: Path, content: str) -> None:
+        """Write content to file atomically using temp file + rename."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+        try:
+            with open(fd, "w") as f:
+                f.write(content)
+            Path(tmp_path).replace(path)
+        except Exception:
+            Path(tmp_path).unlink(missing_ok=True)
+            raise
 
     def create(
         self,

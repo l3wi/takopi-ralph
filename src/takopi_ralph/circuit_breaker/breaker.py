@@ -191,9 +191,7 @@ class CircuitBreaker:
                 )
             elif state.consecutive_same_error >= self.SAME_ERROR_THRESHOLD:
                 new_state = CircuitState.OPEN
-                reason = (
-                    f"Same error repeated in {state.consecutive_same_error} consecutive loops"
-                )
+                reason = f"Same error repeated in {state.consecutive_same_error} consecutive loops"
             elif state.consecutive_no_progress >= self.HALF_OPEN_THRESHOLD:
                 new_state = CircuitState.HALF_OPEN
                 reason = f"Monitoring: {state.consecutive_no_progress} loops without progress"
