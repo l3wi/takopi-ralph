@@ -30,7 +30,7 @@ async def handle_reset(
     # Check for --all flag
     reset_all = "--all" in args or "-a" in args
 
-    lines = [f"## Reset: {ralph_ctx.context_label()}"]
+    lines = [f"<b>Reset: {ralph_ctx.context_label()}</b>"]
 
     # Reset circuit breaker
     circuit_breaker.reset("User requested reset")
@@ -41,4 +41,4 @@ async def handle_reset(
         state_manager.reset()
         lines.append("Session state cleared")
 
-    return CommandResult(text="\n".join(lines))
+    return CommandResult(text="\n".join(lines), extra={"parse_mode": "HTML"})

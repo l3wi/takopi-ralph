@@ -43,19 +43,23 @@ async def handle_init(
         label = ralph_ctx.context_label()
 
         if not is_valid:
+            error_lines = "\n".join(f"  • {e}" for e in errors[:3])
             return CommandResult(
-                text=f"Project **{label}** has a `prd.json` but it has validation errors:\n"
-                + "\n".join(f"  - {e}" for e in errors[:3])
-                + "\n\nRun `/ralph prd fix` to auto-fix, or `/ralph prd show` to view raw JSON."
+                text=f"Project <b>{label}</b> has a <code>prd.json</code> "
+                f"but it has validation errors:\n{error_lines}\n\n"
+                "Run <code>/ralph prd fix</code> to auto-fix, or "
+                "<code>/ralph prd show</code> to view raw JSON.",
+                extra={"parse_mode": "HTML"},
             )
 
         return CommandResult(
-            text=f"Project already initialized in **{label}**: **{prd.project_name}**\n"
+            text=f"Project already initialized in <b>{label}</b>: <b>{prd.project_name}</b>\n"
             f"Progress: {prd.progress_summary()}\n\n"
-            "Commands:\n"
-            "  `/ralph prd` - View PRD status\n"
-            "  `/ralph start` - Start implementation loop\n"
-            "  `/ralph prd clarify` - Add more stories"
+            "<b>Commands:</b>\n"
+            "  <code>/ralph prd</code> — View PRD status\n"
+            "  <code>/ralph start</code> — Start implementation loop\n"
+            "  <code>/ralph prd clarify</code> — Add more stories",
+            extra={"parse_mode": "HTML"},
         )
 
     # Check if loop is running
@@ -63,7 +67,8 @@ async def handle_init(
     if state_manager.exists() and state_manager.is_running():
         return CommandResult(
             text="A Ralph loop is currently running.\n"
-            "Use `/ralph stop` first, then run `/ralph init`."
+            "Use <code>/ralph stop</code> first, then run <code>/ralph init</code>.",
+            extra={"parse_mode": "HTML"},
         )
 
     # Initialize flow and create session (retrieved later via get_pending_session)
@@ -72,9 +77,10 @@ async def handle_init(
 
     # Send topic prompt
     await ctx.executor.send(
-        "**Project Setup**\n\n"
+        "<b>Project Setup</b>\n\n"
         "What are you building? Enter a short description:\n"
-        "(Example: 'Task management app' or 'CLI tool for data processing')"
+        "(Example: 'Task management app' or 'CLI tool for data processing')",
+        extra={"parse_mode": "HTML"},
     )
 
     return None  # Wait for topic input
@@ -131,13 +137,14 @@ async def handle_init_topic_input(
     # Build intro message
     warning_text = ""
     if warnings:
-        warning_text = "\n".join(f"- {w}" for w in warnings)
-        warning_text = f"\n**Warnings:**\n{warning_text}\n"
+        warning_text = "\n".join(f"• {w}" for w in warnings)
+        warning_text = f"\n<b>Warnings:</b>\n{warning_text}\n"
 
     await ctx.executor.send(
-        f"Initializing project: **{session.topic}**\n"
+        f"Initializing project: <b>{session.topic}</b>\n"
         f"{warning_text}\n"
-        "Analyzing your project to generate relevant questions..."
+        "Analyzing your project to generate relevant questions...",
+        extra={"parse_mode": "HTML"},
     )
 
     # Use LLM to generate questions for this project
@@ -179,8 +186,9 @@ async def handle_init_topic_input(
         init_flow.update_session(session)
 
         await ctx.executor.send(
-            f"**{result.analysis}**\n\n"
-            f"I have {len(result.questions)} questions to help create your PRD."
+            f"<b>{result.analysis}</b>\n\n"
+            f"I have {len(result.questions)} questions to help create your PRD.",
+            extra={"parse_mode": "HTML"},
         )
 
         # Send first clarify question
@@ -218,11 +226,12 @@ async def handle_init_topic_input(
         stories_text += f"\n  ... and {len(empty_prd.stories) - 5} more"
 
     return CommandResult(
-        text=f"**Project initialized: {session.topic}**\n\n"
+        text=f"<b>Project initialized: {session.topic}</b>\n\n"
         f"{result.analysis}\n\n"
         f"Generated {len(empty_prd.stories)} user stories:\n{stories_text}\n\n"
-        f"PRD saved to `prd.json`\n"
-        f"Run `/ralph start` to begin implementation!"
+        f"PRD saved to <code>prd.json</code>\n"
+        f"Run <code>/ralph start</code> to begin implementation!",
+        extra={"parse_mode": "HTML"},
     )
 
 

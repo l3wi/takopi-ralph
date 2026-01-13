@@ -48,38 +48,38 @@ async def handle_status(
     state_manager = StateManager(cwd / ".ralph")
     circuit_breaker = CircuitBreaker(cwd / ".ralph")
 
-    lines = [f"## Ralph Status: {ralph_ctx.context_label()}"]
+    lines = [f"<b>Ralph Status: {ralph_ctx.context_label()}</b>"]
 
     # PRD info first - most important context
     lines.append("")
-    lines.append("### PRD")
+    lines.append("<b>PRD</b>")
     if prd_manager.exists():
         # Validate PRD first to catch issues
         is_valid, errors = prd_manager.validate()
         if not is_valid:
-            lines.append("⚠️ **PRD has validation errors:**")
+            lines.append("⚠️ <b>PRD has validation errors:</b>")
             for err in errors[:3]:
-                lines.append(f"  - {err}")
+                lines.append(f"  • {err}")
             if len(errors) > 3:
-                lines.append(f"  - ... and {len(errors) - 3} more")
+                lines.append(f"  • ... and {len(errors) - 3} more")
             lines.append("")
-            lines.append("Run `/ralph prd fix` to auto-fix schema issues.")
+            lines.append("Run <code>/ralph prd fix</code> to auto-fix schema issues.")
             # Still try to load what we can
             prd = prd_manager.load()
             if prd.project_name:
                 lines.append("")
-                lines.append(f"**Project:** {prd.project_name} (may be incomplete)")
+                lines.append(f"<b>Project:</b> {prd.project_name} (may be incomplete)")
         else:
             prd = prd_manager.load()
-            lines.append(f"**Project:** {prd.project_name or '(unnamed)'}")
-            lines.append(f"**Quality:** {prd.quality_level}")
-            lines.append(f"**Progress:** {prd.progress_summary()}")
+            lines.append(f"<b>Project:</b> {prd.project_name or '(unnamed)'}")
+            lines.append(f"<b>Quality:</b> {prd.quality_level}")
+            lines.append(f"<b>Progress:</b> {prd.progress_summary()}")
 
         # Current/next task
         next_story = prd.next_story()
         if next_story:
             lines.append("")
-            lines.append(f"**Next task:** #{next_story.id} {next_story.title}")
+            lines.append(f"<b>Next task:</b> #{next_story.id} {next_story.title}")
             if next_story.description:
                 # Truncate long descriptions
                 desc = next_story.description[:100]
@@ -88,32 +88,32 @@ async def handle_status(
                 lines.append(f"  {desc}")
         elif prd.all_complete():
             lines.append("")
-            lines.append("**All stories complete!**")
+            lines.append("<b>All stories complete!</b>")
     else:
-        lines.append("*No prd.json found — run `/ralph prd init` to create*")
+        lines.append("<i>No prd.json found — run <code>/ralph prd init</code> to create</i>")
 
     # Loop state
     lines.append("")
-    lines.append("### Loop State")
+    lines.append("<b>Loop State</b>")
     if state_manager.exists():
         state = state_manager.load()
-        lines.append(f"**Status:** {state.status.value.upper()}")
-        lines.append(f"**Loop:** {state.current_loop}/{state.max_loops}")
+        lines.append(f"<b>Status:</b> {state.status.value.upper()}")
+        lines.append(f"<b>Loop:</b> {state.current_loop}/{state.max_loops}")
 
         # Session info
         if state.session_id:
-            lines.append(f"**Session:** `{state.session_id[:12]}...`")
-        lines.append(f"**Started:** {_format_timestamp(state.started_at)}")
+            lines.append(f"<b>Session:</b> <code>{state.session_id[:12]}...</code>")
+        lines.append(f"<b>Started:</b> {_format_timestamp(state.started_at)}")
         if state.current_loop > 0:
             duration = _format_duration(state.started_at, state.updated_at)
-            lines.append(f"**Duration:** {duration}")
+            lines.append(f"<b>Duration:</b> {duration}")
 
         if state.exit_reason:
-            lines.append(f"**Exit reason:** {state.exit_reason}")
+            lines.append(f"<b>Exit reason:</b> {state.exit_reason}")
 
         # Consecutive counters
         lines.append("")
-        lines.append("**Counters:**")
+        lines.append("<b>Counters:</b>")
         lines.append(f"  Test-only loops: {state.consecutive_test_only}")
         lines.append(f"  Done signals: {state.consecutive_done_signals}")
         lines.append(f"  No progress: {state.consecutive_no_progress}")
@@ -121,7 +121,7 @@ async def handle_status(
         # Recent loop history (last 3)
         if state.recent_results:
             lines.append("")
-            lines.append("**Recent loops:**")
+            lines.append("<b>Recent loops:</b>")
             for result in state.recent_results[-3:]:
                 status_icon = {
                     "COMPLETE": "+",
@@ -136,24 +136,24 @@ async def handle_status(
                     summary += "..."
                 lines.append(f"  [{status_icon}] Loop {result.loop_number}: {summary}")
     else:
-        lines.append("*No active session — run `/ralph start` to begin*")
+        lines.append("<i>No active session — run <code>/ralph start</code> to begin</i>")
 
     # Circuit breaker
     lines.append("")
-    lines.append("### Circuit Breaker")
+    lines.append("<b>Circuit Breaker</b>")
     cb_status = circuit_breaker.get_status()
     cb_state = cb_status.get("state", "CLOSED")
 
     state_indicator = {"CLOSED": "OK", "HALF_OPEN": "WARN", "OPEN": "HALTED"}.get(
         cb_state, ""
     )
-    lines.append(f"**State:** {cb_state} ({state_indicator})")
+    lines.append(f"<b>State:</b> {cb_state} ({state_indicator})")
 
     if cb_status.get("reason"):
-        lines.append(f"**Reason:** {cb_status['reason']}")
+        lines.append(f"<b>Reason:</b> {cb_status['reason']}")
 
-    lines.append(f"**No progress loops:** {cb_status.get('consecutive_no_progress', 0)}")
-    lines.append(f"**Error loops:** {cb_status.get('consecutive_same_error', 0)}")
+    lines.append(f"<b>No progress loops:</b> {cb_status.get('consecutive_no_progress', 0)}")
+    lines.append(f"<b>Error loops:</b> {cb_status.get('consecutive_same_error', 0)}")
 
     # Pending stories list
     if prd_manager.exists():
@@ -161,10 +161,10 @@ async def handle_status(
         pending = [s for s in prd.stories if not s.passes]
         if pending and len(pending) > 1:
             lines.append("")
-            lines.append("### Pending Stories")
+            lines.append("<b>Pending Stories</b>")
             for story in pending[:5]:
                 lines.append(f"  {story.id}. {story.title}")
             if len(pending) > 5:
                 lines.append(f"  ... and {len(pending) - 5} more")
 
-    return CommandResult(text="\n".join(lines))
+    return CommandResult(text="\n".join(lines), extra={"parse_mode": "HTML"})

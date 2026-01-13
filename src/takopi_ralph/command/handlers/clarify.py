@@ -179,7 +179,10 @@ async def handle_clarify_response(
     session = flow.get_session(session_id)
     if not session:
         _clear_active_session(cwd)
-        return CommandResult(text="Session expired. Start a new /ralph prd clarify.")
+        return CommandResult(
+            text="Session expired. Start a new <code>/ralph prd clarify</code>.",
+            extra={"parse_mode": "HTML"},
+        )
 
     # Get current question for context
     question = session.current_question()
@@ -248,7 +251,10 @@ async def handle_clarify_callback(
     session = flow.get_session(session_id)
     if not session:
         _clear_active_session(cwd)
-        return CommandResult(text="Session expired. Start a new /ralph prd clarify.")
+        return CommandResult(
+            text="Session expired. Start a new <code>/ralph prd clarify</code>.",
+            extra={"parse_mode": "HTML"},
+        )
 
     # Get current question for context
     question = session.current_question()

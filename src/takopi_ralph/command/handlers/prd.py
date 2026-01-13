@@ -108,13 +108,14 @@ async def handle_prd(
         return await handle_prd_show(ctx, ralph_ctx)
     else:
         return CommandResult(
-            text=f"Unknown prd subcommand: `{subcommand}`\n\n"
-            "Usage:\n"
-            "  `/ralph prd` - Show PRD status\n"
-            "  `/ralph prd init` - Create initial PRD from description\n"
-            "  `/ralph prd clarify [focus]` - Analyze and improve PRD\n"
-            "  `/ralph prd fix` - Auto-fix invalid PRD schema\n"
-            "  `/ralph prd show` - Show raw PRD JSON"
+            text=f"Unknown prd subcommand: <code>{subcommand}</code>\n\n"
+            "<b>Usage:</b>\n"
+            "  <code>/ralph prd</code> — Show PRD status\n"
+            "  <code>/ralph prd init</code> — Create initial PRD from description\n"
+            "  <code>/ralph prd clarify [focus]</code> — Analyze and improve PRD\n"
+            "  <code>/ralph prd fix</code> — Auto-fix invalid PRD schema\n"
+            "  <code>/ralph prd show</code> — Show raw PRD JSON",
+            extra={"parse_mode": "HTML"},
         )
 
 
@@ -128,57 +129,60 @@ async def handle_prd_status(
 
     if not prd_manager.exists():
         return CommandResult(
-            text="**No PRD found**\n\n"
-            "Run `/ralph prd init` to create one from a description, or\n"
-            "`/ralph init` for full project setup."
+            text="<b>No PRD found</b>\n\n"
+            "Run <code>/ralph prd init</code> to create one from a description, or\n"
+            "<code>/ralph init</code> for full project setup.",
+            extra={"parse_mode": "HTML"},
         )
 
     # Validate PRD schema
     is_valid, errors = prd_manager.validate()
     if not is_valid:
-        errors_text = "\n".join(f"  - {e}" for e in errors[:5])
+        errors_text = "\n".join(f"  • {e}" for e in errors[:5])
         if len(errors) > 5:
             errors_text += f"\n  ... and {len(errors) - 5} more"
 
         return CommandResult(
-            text="**PRD validation failed**\n\n"
-            f"The `prd.json` file exists but doesn't match Ralph's schema:\n{errors_text}\n\n"
-            "Options:\n"
-            "  `/ralph prd fix` - Auto-fix using AI\n"
-            "  `/ralph prd init` - Delete and create new (after removing prd.json)\n"
+            text="<b>PRD validation failed</b>\n\n"
+            f"The <code>prd.json</code> file exists but doesn't match "
+            f"Ralph's schema:\n{errors_text}\n\n"
+            "<b>Options:</b>\n"
+            "  <code>/ralph prd fix</code> — Auto-fix using AI\n"
+            "  <code>/ralph prd init</code> — Delete and create new",
+            extra={"parse_mode": "HTML"},
         )
 
     prd = prd_manager.load()
 
     # Build status display
     lines = [
-        f"## {prd.project_name}",
+        f"<b>{prd.project_name}</b>",
         "",
     ]
 
     if prd.description:
         # Truncate long descriptions
         desc = prd.description[:200] + "..." if len(prd.description) > 200 else prd.description
-        lines.append(f"*{desc}*")
+        lines.append(f"<i>{desc}</i>")
         lines.append("")
 
-    lines.append(f"**Progress:** {prd.completed_count()}/{prd.total_count()} stories complete")
+    lines.append(f"<b>Progress:</b> {prd.completed_count()}/{prd.total_count()} stories complete")
     lines.append("")
 
     # Story list with status indicators
     if prd.stories:
-        lines.append("**Stories:**")
+        lines.append("<b>Stories:</b>")
         for story in prd.stories:
-            status_icon = "[x]" if story.passes else "[ ]"
+            status_icon = "✓" if story.passes else "○"
             lines.append(f"  {status_icon} {story.id}. {story.title}")
 
     # Next story hint
     next_story = prd.next_story()
     if next_story:
         lines.append("")
-        lines.append(f"**Next:** {next_story.title}")
+        lines.append(f"<b>Next:</b> {next_story.title}")
 
-    return CommandResult(text="\n".join(lines))
+    return CommandResult(text="\n".join(lines), extra={"parse_mode": "HTML"})
 
 
 async def handle_prd_init(
@@ -196,9 +200,10 @@ async def handle_prd_init(
     # Check if PRD already exists
     if prd_manager.exists():
         return CommandResult(
-            text="**PRD already exists**\n\n"
-            "Use `/ralph prd clarify` to analyze and improve it, or\n"
-            "`/ralph prd` to view current status."
+            text="<b>PRD already exists</b>\n\n"
+            "Use <code>/ralph prd clarify</code> to analyze and improve it, or\n"
+            "<code>/ralph prd</code> to view current status.",
+            extra={"parse_mode": "HTML"},
         )
 
     # Ensure .ralph directory exists
@@ -208,14 +213,15 @@ async def handle_prd_init(
     _create_prd_init_session(cwd)
 
     await ctx.executor.send(
-        "**Create Initial PRD**\n\n"
+        "<b>Create Initial PRD</b>\n\n"
         "Describe your project in detail. Include:\n"
-        "- What you're building\n"
-        "- Key features (MVP scope)\n"
-        "- Tech stack (if decided)\n"
-        "- Target users\n\n"
+        "• What you're building\n"
+        "• Key features (MVP scope)\n"
+        "• Tech stack (if decided)\n"
+        "• Target users\n\n"
         "The more detail you provide, the better the initial PRD.\n\n"
-        "*Reply with your project description.*"
+        "<i>Reply with your project description.</i>",
+        extra={"parse_mode": "HTML"},
     )
 
     return None
@@ -242,7 +248,10 @@ async def handle_prd_init_input(
     project_name = _extract_project_name(description)
     empty_prd = PRD(project_name=project_name, description=description)
 
-    await ctx.executor.send(f"**Analyzing your project:** {project_name}...")
+    await ctx.executor.send(
+        f"<b>Analyzing your project:</b> {project_name}...",
+        extra={"parse_mode": "HTML"},
+    )
 
     # Use LLM to analyze and get questions/stories
     analyzer = LLMAnalyzer(ctx.executor, cwd=cwd)
@@ -300,12 +309,13 @@ async def handle_prd_init_input(
             stories_text += f"\n  ... and {len(empty_prd.stories) - 5} more"
 
         return CommandResult(
-            text=f"**PRD created for {project_name}**\n\n"
+            text=f"<b>PRD created for {project_name}</b>\n\n"
             f"{result.analysis}\n\n"
             f"Generated {len(empty_prd.stories)} user stories:\n{stories_text}\n\n"
-            f"PRD saved to `prd.json`\n\n"
-            f"Use `/ralph prd clarify` to refine it, or\n"
-            f"`/ralph start` to begin implementation!"
+            f"PRD saved to <code>prd.json</code>\n\n"
+            f"Use <code>/ralph prd clarify</code> to refine it, or\n"
+            f"<code>/ralph start</code> to begin implementation!",
+            extra={"parse_mode": "HTML"},
         )
 
     # Fallback - create minimal PRD
@@ -318,8 +328,9 @@ async def handle_prd_init_input(
     prd_manager.save(empty_prd)
 
     return CommandResult(
-        text=f"**PRD created for {project_name}**\n\n"
-        "Created minimal PRD. Use `/ralph prd clarify` to add more stories."
+        text=f"<b>PRD created for {project_name}</b>\n\n"
+        "Created minimal PRD. Use <code>/ralph prd clarify</code> to add more stories.",
+        extra={"parse_mode": "HTML"},
     )
 
 
@@ -336,7 +347,10 @@ async def handle_prd_clarify(
 
     # Check PRD exists
     if not prd_manager.exists():
-        return CommandResult(text="**No PRD found**\n\nUse `/ralph prd init` to create one first.")
+        return CommandResult(
+            text="<b>No PRD found</b>\n\nUse <code>/ralph prd init</code> to create one first.",
+            extra={"parse_mode": "HTML"},
+        )
 
     prd = prd_manager.load()
 
@@ -351,8 +365,10 @@ async def handle_prd_clarify(
     # Initialize flow manager
     flow = ClarifyFlow(cwd / ".ralph")
 
+    focus_text = f"\n<i>Focus: {focus}</i>" if focus else ""
     await ctx.executor.send(
-        f"**Analyzing {prd.project_name} PRD...**" + (f"\n*Focus: {focus}*" if focus else "")
+        f"<b>Analyzing {prd.project_name} PRD...</b>{focus_text}",
+        extra={"parse_mode": "HTML"},
     )
 
     # Use LLM to analyze PRD
@@ -407,20 +423,22 @@ async def handle_prd_clarify(
         if added_count > 0:
             prd_manager.save(prd)
             return CommandResult(
-                text=f"**PRD Enhanced**\n\n"
+                text=f"<b>PRD Enhanced</b>\n\n"
                 f"{result.analysis}\n\n"
                 f"Added {added_count} new stories.\n"
                 f"Total: {prd.total_count()} stories\n\n"
-                f"Use `/ralph prd` to view the updated PRD."
+                f"Use <code>/ralph prd</code> to view the updated PRD.",
+                extra={"parse_mode": "HTML"},
             )
 
     # PRD looks complete
     return CommandResult(
-        text=f"**PRD for {prd.project_name} looks complete!**\n\n"
+        text=f"<b>PRD for {prd.project_name} looks complete!</b>\n\n"
         f"{result.analysis}\n\n"
         f"{prd.total_count()} stories defined.\n\n"
-        "Use `/ralph start` to begin implementation, or\n"
-        "`/ralph prd clarify <focus>` to add specific features."
+        "Use <code>/ralph start</code> to begin implementation, or\n"
+        "<code>/ralph prd clarify &lt;focus&gt;</code> to add specific features.",
+        extra={"parse_mode": "HTML"},
     )
 
 
@@ -437,29 +455,35 @@ async def handle_prd_fix(
 
     if not prd_manager.exists():
         return CommandResult(
-            text="**No PRD found**\n\n"
-            "Use `/ralph prd init` to create one."
+            text="<b>No PRD found</b>\n\n"
+            "Use <code>/ralph prd init</code> to create one.",
+            extra={"parse_mode": "HTML"},
         )
 
     # Validate first
     is_valid, errors = prd_manager.validate()
     if is_valid:
         return CommandResult(
-            text="**PRD is already valid!**\n\n"
-            "Use `/ralph prd` to view it."
+            text="<b>PRD is already valid!</b>\n\n"
+            "Use <code>/ralph prd</code> to view it.",
+            extra={"parse_mode": "HTML"},
         )
 
     # Read current invalid PRD
     try:
         current_prd = prd_manager.prd_path.read_text()
     except OSError as e:
-        return CommandResult(text=f"**Cannot read prd.json:** {e}")
+        return CommandResult(
+            text=f"<b>Cannot read prd.json:</b> {e}",
+            extra={"parse_mode": "HTML"},
+        )
 
-    errors_text = "\n".join(f"- {e}" for e in errors)
+    errors_text = "\n".join(f"• {e}" for e in errors)
 
     await ctx.executor.send(
-        f"**Fixing PRD schema...**\n\n"
-        f"Found {len(errors)} validation error(s). Running AI to fix..."
+        f"<b>Fixing PRD schema...</b>\n\n"
+        f"Found {len(errors)} validation error(s). Running AI to fix...",
+        extra={"parse_mode": "HTML"},
     )
 
     # Build fix prompt with absolute path
@@ -480,17 +504,19 @@ async def handle_prd_fix(
     if is_valid:
         prd = prd_manager.load()
         return CommandResult(
-            text=f"**PRD fixed!**\n\n"
+            text=f"<b>PRD fixed!</b>\n\n"
             f"Project: {prd.project_name}\n"
             f"Stories: {prd.total_count()}\n\n"
-            f"Use `/ralph prd` to view or `/ralph start` to begin."
+            f"Use <code>/ralph prd</code> to view or <code>/ralph start</code> to begin.",
+            extra={"parse_mode": "HTML"},
         )
     else:
-        errors_text = "\n".join(f"  - {e}" for e in errors[:3])
+        errors_text = "\n".join(f"  • {e}" for e in errors[:3])
         return CommandResult(
-            text=f"**PRD still has errors**\n\n"
+            text=f"<b>PRD still has errors</b>\n\n"
             f"{errors_text}\n\n"
-            "Try running `/ralph prd fix` again or manually edit prd.json."
+            "Try running <code>/ralph prd fix</code> again or manually edit prd.json.",
+            extra={"parse_mode": "HTML"},
         )
 
 
@@ -504,8 +530,9 @@ async def handle_prd_show(
 
     if not prd_manager.exists():
         return CommandResult(
-            text="**No PRD found**\n\n"
-            "Use `/ralph prd init` to create one."
+            text="<b>No PRD found</b>\n\n"
+            "Use <code>/ralph prd init</code> to create one.",
+            extra={"parse_mode": "HTML"},
         )
 
     try:
@@ -518,10 +545,14 @@ async def handle_prd_show(
             pretty = content
 
         return CommandResult(
-            text=f"**prd.json**\n\n```json\n{pretty}\n```"
+            text=f"<b>prd.json</b>\n\n<pre>{pretty}</pre>",
+            extra={"parse_mode": "HTML"},
         )
     except OSError as e:
-        return CommandResult(text=f"**Cannot read prd.json:** {e}")
+        return CommandResult(
+            text=f"<b>Cannot read prd.json:</b> {e}",
+            extra={"parse_mode": "HTML"},
+        )
 
 
 def _extract_project_name(description: str) -> str:

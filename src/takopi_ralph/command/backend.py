@@ -41,25 +41,28 @@ from .handlers.stop import handle_stop
 if TYPE_CHECKING:
     from takopi.api import TransportRuntime
 
-HELP_TEXT = """**Ralph - Autonomous Coding Loop**
+HELP_TEXT = """<b>Ralph — Autonomous Coding Loop</b>
 
-Usage: `/ralph [project] [@branch] <command>`
+Usage: <code>/ralph [project] [@branch] &lt;command&gt;</code>
 
-Commands:
-  `init`              - Interactive project setup
-  `prd`               - Show PRD status
-  `prd init`          - Create PRD from description
-  `prd clarify [focus]` - Analyze and improve PRD
-  `start`             - Start a Ralph loop
-  `status`            - Show current status
-  `stop`              - Gracefully stop the loop
-  `reset [--all]`     - Reset circuit breaker
+<b>Commands:</b>
+  <code>init</code>              Interactive project setup
+  <code>prd</code>               Show PRD status
+  <code>prd init</code>          Create PRD from description
+  <code>prd clarify</code>       Analyze and improve PRD
+  <code>prd fix</code>           Auto-fix invalid PRD schema
+  <code>prd show</code>          Show raw PRD JSON
+  <code>start</code>             Start a Ralph loop
+  <code>status</code>            Show current status
+  <code>stop</code>              Gracefully stop the loop
+  <code>reset [--all]</code>     Reset circuit breaker
+  <code>help</code>              Show this help
 
-Examples:
-  `/ralph init`                   # Current directory
-  `/ralph myproject start`        # Specific project
-  `/ralph myproject @feature prd` # Project on feature branch
-  `/ralph @hotfix status`         # Current project, hotfix worktree
+<b>Examples:</b>
+  <code>/ralph init</code>                   Current directory
+  <code>/ralph myproject start</code>        Specific project
+  <code>/ralph myproject @feature prd</code> Project on feature branch
+  <code>/ralph @hotfix status</code>         Current project, hotfix worktree
 """
 
 # Commands that should not be confused with project names
@@ -288,7 +291,7 @@ class RalphCommand:
         subcommand = remaining_args[0].lower() if remaining_args else ""
 
         if not subcommand:
-            return CommandResult(text=HELP_TEXT)
+            return CommandResult(text=HELP_TEXT, extra={"parse_mode": "HTML"})
 
         # Route to handler with ralph_ctx
         handlers = {
@@ -298,12 +301,17 @@ class RalphCommand:
             "status": handle_status,
             "stop": handle_stop,
             "reset": handle_reset,
-            "help": lambda ctx, ralph_ctx: CommandResult(text=HELP_TEXT),
+            "help": lambda ctx, ralph_ctx: CommandResult(
+                text=HELP_TEXT, extra={"parse_mode": "HTML"}
+            ),
         }
 
         handler = handlers.get(subcommand)
         if handler is None:
-            return CommandResult(text=f"Unknown command: `{subcommand}`\n\n{HELP_TEXT}")
+            return CommandResult(
+                text=f"Unknown command: <code>{subcommand}</code>\n\n{HELP_TEXT}",
+                extra={"parse_mode": "HTML"},
+            )
 
         return await handler(ctx, ralph_ctx)
 

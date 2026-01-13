@@ -36,8 +36,9 @@ async def handle_start(
     # Check if already running (but allow resuming from PAUSED)
     if state_manager.is_running():
         return CommandResult(
-            text=f"A Ralph loop is already running for **{ralph_ctx.context_label()}**.\n"
+            text=f"A Ralph loop is already running for <b>{ralph_ctx.context_label()}</b>.\n"
             "Use /ralph stop first.",
+            extra={"parse_mode": "HTML"},
         )
 
     # Check circuit breaker
@@ -51,8 +52,9 @@ async def handle_start(
     # Check for PRD
     if not prd_manager.exists():
         return CommandResult(
-            text=f"No prd.json found in **{ralph_ctx.context_label()}**.\n"
+            text=f"No prd.json found in <b>{ralph_ctx.context_label()}</b>.\n"
             "Use /ralph init or /ralph prd init to create one first.",
+            extra={"parse_mode": "HTML"},
         )
 
     prd = prd_manager.load()
@@ -83,16 +85,18 @@ async def handle_start(
     # Send status message
     if is_resuming:
         await ctx.executor.send(
-            f"Resuming Ralph loop for **{ralph_ctx.context_label()}**\n"
+            f"Resuming Ralph loop for <b>{ralph_ctx.context_label()}</b>\n"
             f"Progress: {prd.progress_summary()}\n"
             f"Continuing from loop {current_state.current_loop}\n"
-            f"Current task: {story_info}"
+            f"Current task: {story_info}",
+            extra={"parse_mode": "HTML"},
         )
     else:
         await ctx.executor.send(
-            f"Starting Ralph loop for **{ralph_ctx.context_label()}**\n"
+            f"Starting Ralph loop for <b>{ralph_ctx.context_label()}</b>\n"
             f"Progress: {prd.progress_summary()}\n"
-            f"First task: {story_info}"
+            f"First task: {story_info}",
+            extra={"parse_mode": "HTML"},
         )
 
     # Run the loop
@@ -112,18 +116,19 @@ async def handle_start(
             if state.recent_results:
                 last = state.recent_results[-1]
                 last_result_info = (
-                    f"\n**Last loop:**\n"
+                    f"\n<b>Last loop:</b>\n"
                     f"  Errors: {last.error_count}\n"
                     f"  Tests: {last.tests_status.value}\n"
                     f"  Recommendation: {last.recommendation or 'N/A'}"
                 )
             return CommandResult(
-                text=f"🛑 **Ralph loop halted** after {iteration} iterations.\n\n"
-                f"**Reason:** {status.get('reason')}\n"
-                f"**No progress loops:** {status.get('consecutive_no_progress', 0)}\n"
-                f"**Error loops:** {status.get('consecutive_same_error', 0)}"
+                text=f"🛑 <b>Ralph loop halted</b> after {iteration} iterations.\n\n"
+                f"<b>Reason:</b> {status.get('reason')}\n"
+                f"<b>No progress loops:</b> {status.get('consecutive_no_progress', 0)}\n"
+                f"<b>Error loops:</b> {status.get('consecutive_same_error', 0)}"
                 f"{last_result_info}\n\n"
-                "Use `/ralph reset` to reset circuit breaker and try again.",
+                "Use <code>/ralph reset</code> to reset circuit breaker and try again.",
+                extra={"parse_mode": "HTML"},
             )
 
         # Check if state says we should stop (e.g., from /ralph stop)
@@ -144,7 +149,8 @@ async def handle_start(
 
         # Send loop start message to chat so user can see progress
         await ctx.executor.send(
-            f"**Loop {iteration}** — {current_task}"
+            f"<b>Loop {iteration}</b> — {current_task}",
+            extra={"parse_mode": "HTML"},
         )
 
         # Build prompt
@@ -172,31 +178,35 @@ async def handle_start(
 
             if last_result.error_count > 0 or last_result.is_stuck:
                 await ctx.executor.send(
-                    f"⚠️ **Loop {iteration} ({work_type_label}) had issues:**\n"
+                    f"⚠️ <b>Loop {iteration} ({work_type_label}) had issues:</b>\n"
                     f"  Errors detected: {last_result.error_count}\n"
                     f"  Files modified: {last_result.files_modified}\n"
                     f"  Tests: {last_result.tests_status.value}\n"
-                    f"  Recommendation: {last_result.recommendation or 'Continue working'}"
+                    f"  Recommendation: {last_result.recommendation or 'Continue working'}",
+                    extra={"parse_mode": "HTML"},
                 )
             elif last_result.current_story_complete:
                 # Story was explicitly marked complete by Claude
                 prd_check = prd_manager.load()
                 progress = prd_check.progress_summary()
                 await ctx.executor.send(
-                    f"✅ **Story completed!** ({work_type_label}) — Progress: {progress}"
+                    f"✅ <b>Story completed!</b> ({work_type_label}) — Progress: {progress}",
+                    extra={"parse_mode": "HTML"},
                 )
             elif last_result.has_completion_signal:
                 # General completion signal (e.g., all done)
                 prd_check = prd_manager.load()
                 progress = prd_check.progress_summary()
                 await ctx.executor.send(
-                    f"✅ **Loop {iteration} done** ({work_type_label}) — Progress: {progress}"
+                    f"✅ <b>Loop {iteration} done</b> ({work_type_label}) — Progress: {progress}",
+                    extra={"parse_mode": "HTML"},
                 )
             elif last_result.files_modified > 0:
                 # Show brief progress for successful iterations with changes
                 files = last_result.files_modified
                 await ctx.executor.send(
-                    f"📝 **Loop {iteration}** ({work_type_label}) — {files} files modified"
+                    f"📝 <b>Loop {iteration}</b> ({work_type_label}) — {files} files modified",
+                    extra={"parse_mode": "HTML"},
                 )
         if state.status != LoopStatus.RUNNING:
             return CommandResult(
