@@ -14,7 +14,8 @@ class RalphStatus:
     """Parsed RALPH_STATUS block."""
 
     status: str  # IN_PROGRESS, COMPLETE, BLOCKED
-    tasks_completed: int
+    current_story_complete: bool  # Whether the current story is done
+    tasks_completed: int  # Legacy field, kept for backwards compatibility
     files_modified: int
     tests_status: TestsStatus
     work_type: WorkType
@@ -26,6 +27,7 @@ class RalphStatus:
         """Return an empty/default status."""
         return cls(
             status="UNKNOWN",
+            current_story_complete=False,
             tasks_completed=0,
             files_modified=0,
             tests_status=TestsStatus.NOT_RUN,
@@ -44,6 +46,9 @@ _STATUS_BLOCK_RE = re.compile(
 # Regex patterns for each field
 _FIELD_PATTERNS = {
     "status": re.compile(r"STATUS:\s*(IN_PROGRESS|COMPLETE|BLOCKED)", re.IGNORECASE),
+    "current_story_complete": re.compile(
+        r"CURRENT_STORY_COMPLETE:\s*(true|false)", re.IGNORECASE
+    ),
     "tasks_completed": re.compile(r"TASKS_COMPLETED_THIS_LOOP:\s*(\d+)", re.IGNORECASE),
     "files_modified": re.compile(r"FILES_MODIFIED:\s*(\d+)", re.IGNORECASE),
     "tests_status": re.compile(r"TESTS_STATUS:\s*(PASSING|FAILING|NOT_RUN)", re.IGNORECASE),
@@ -80,10 +85,18 @@ def parse_ralph_status(text: str) -> RalphStatus | None:
     if status_match:
         result.status = status_match.group(1).upper()
 
-    # Tasks completed
+    # Current story complete (new field)
+    story_complete_match = _FIELD_PATTERNS["current_story_complete"].search(block_content)
+    if story_complete_match:
+        result.current_story_complete = story_complete_match.group(1).lower() == "true"
+
+    # Tasks completed (legacy field, for backwards compatibility)
     tasks_match = _FIELD_PATTERNS["tasks_completed"].search(block_content)
     if tasks_match:
         result.tasks_completed = int(tasks_match.group(1))
+        # If legacy field is set but new field isn't, infer from legacy
+        if not story_complete_match and result.tasks_completed > 0:
+            result.current_story_complete = True
 
     # Files modified
     files_match = _FIELD_PATTERNS["files_modified"].search(block_content)

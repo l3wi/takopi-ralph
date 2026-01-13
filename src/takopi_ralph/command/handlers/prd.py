@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from takopi.api import CommandContext, CommandResult
+from takopi.api import CommandContext, CommandResult, RunRequest
 
 from ...clarify import ClarifyFlow
 from ...clarify.llm_analyzer import LLMAnalyzer
@@ -15,6 +15,67 @@ from .clarify import send_question
 
 # Session storage filename for prd init
 PRD_INIT_SESSIONS_FILE = "prd_init_sessions.json"
+
+# Prompt for LLM to fix invalid PRD
+PRD_FIX_PROMPT = """The prd.json file has validation errors and needs to be converted to Ralph's \
+schema.
+
+## Required Ralph PRD Schema
+
+```json
+{{
+  "project_name": "string (required)",
+  "description": "string (required)",
+  "stories": [
+    {{
+      "id": 1,
+      "title": "Short title for the user story",
+      "description": "What needs to be built",
+      "acceptance_criteria": ["Criterion 1", "Criterion 2"],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    }}
+  ],
+  "quality_level": "prototype" | "production" | "library",
+  "feedback_commands": {{"test": "bun test", "lint": "bun run lint"}}
+}}
+```
+
+## Current Invalid PRD
+
+```json
+{current_prd}
+```
+
+## Validation Errors
+
+{errors}
+
+## Task
+
+Convert the current prd.json to Ralph's schema. This requires:
+
+1. **Extract project info:**
+   - `project_name`: Use "name" field, or infer from content
+   - `description`: Use "description" field, or "problem_statement.summary"
+
+2. **Convert to user stories:**
+   - Look for: `tasks`, `components`, `features`, `deliverables`, `milestones`
+   - Each item becomes a story with: id, title, description, acceptance_criteria, priority, passes
+   - If the original has nested structures (like components), flatten into individual stories
+   - Prioritize: core items (priority 1), features (priority 2), polish (priority 3)
+
+3. **Set quality level:**
+   - "prototype" for MVPs/experiments
+   - "production" for real apps
+   - "library" for reusable packages
+
+4. **Set feedback commands:**
+   - Detect from package.json, pyproject.toml, or Makefile in the project
+   - Default: {{"test": "echo 'no tests'", "lint": "echo 'no lint'"}}
+
+Write the converted PRD to `{prd_path}`. Preserve the intent of the original spec."""
 
 
 async def handle_prd(
@@ -41,13 +102,19 @@ async def handle_prd(
         return await handle_prd_init(ctx, ralph_ctx)
     elif subcommand == "clarify":
         return await handle_prd_clarify(ctx, ralph_ctx)
+    elif subcommand == "fix":
+        return await handle_prd_fix(ctx, ralph_ctx)
+    elif subcommand == "show":
+        return await handle_prd_show(ctx, ralph_ctx)
     else:
         return CommandResult(
             text=f"Unknown prd subcommand: `{subcommand}`\n\n"
             "Usage:\n"
             "  `/ralph prd` - Show PRD status\n"
             "  `/ralph prd init` - Create initial PRD from description\n"
-            "  `/ralph prd clarify [focus]` - Analyze and improve PRD"
+            "  `/ralph prd clarify [focus]` - Analyze and improve PRD\n"
+            "  `/ralph prd fix` - Auto-fix invalid PRD schema\n"
+            "  `/ralph prd show` - Show raw PRD JSON"
         )
 
 
@@ -64,6 +131,21 @@ async def handle_prd_status(
             text="**No PRD found**\n\n"
             "Run `/ralph prd init` to create one from a description, or\n"
             "`/ralph init` for full project setup."
+        )
+
+    # Validate PRD schema
+    is_valid, errors = prd_manager.validate()
+    if not is_valid:
+        errors_text = "\n".join(f"  - {e}" for e in errors[:5])
+        if len(errors) > 5:
+            errors_text += f"\n  ... and {len(errors) - 5} more"
+
+        return CommandResult(
+            text="**PRD validation failed**\n\n"
+            f"The `prd.json` file exists but doesn't match Ralph's schema:\n{errors_text}\n\n"
+            "Options:\n"
+            "  `/ralph prd fix` - Auto-fix using AI\n"
+            "  `/ralph prd init` - Delete and create new (after removing prd.json)\n"
         )
 
     prd = prd_manager.load()
@@ -163,7 +245,7 @@ async def handle_prd_init_input(
     await ctx.executor.send(f"**Analyzing your project:** {project_name}...")
 
     # Use LLM to analyze and get questions/stories
-    analyzer = LLMAnalyzer(ctx.executor)
+    analyzer = LLMAnalyzer(ctx.executor, cwd=cwd)
     result = await analyzer.analyze(
         prd_json=empty_prd.model_dump_json(),
         mode="create",
@@ -193,12 +275,12 @@ async def handle_prd_init_input(
         session.answers["_description"] = description
         flow.update_session(session)
 
+        # Note: Claude already outputs analysis, just show question count
         await ctx.executor.send(
-            f"**{result.analysis}**\n\n"
             f"I have {len(result.questions)} questions to help create your PRD."
         )
 
-        await send_question(ctx, session)
+        await send_question(ctx, session, cwd)
         return None
 
     # No questions - generate PRD directly from stories
@@ -274,7 +356,7 @@ async def handle_prd_clarify(
     )
 
     # Use LLM to analyze PRD
-    analyzer = LLMAnalyzer(ctx.executor)
+    analyzer = LLMAnalyzer(ctx.executor, cwd=cwd)
     result = await analyzer.analyze(
         prd_json=prd.model_dump_json(),
         mode="enhance",
@@ -299,11 +381,12 @@ async def handle_prd_clarify(
             pending_questions=pending_questions,
         )
 
+        # Note: Claude already outputs analysis, just show question count
         await ctx.executor.send(
-            f"**{result.analysis}**\n\nI have {len(result.questions)} questions to improve the PRD."
+            f"I have {len(result.questions)} questions to improve the PRD."
         )
 
-        await send_question(ctx, session)
+        await send_question(ctx, session, cwd)
         return None
 
     # No questions - apply suggested stories directly
@@ -339,6 +422,106 @@ async def handle_prd_clarify(
         "Use `/ralph start` to begin implementation, or\n"
         "`/ralph prd clarify <focus>` to add specific features."
     )
+
+
+async def handle_prd_fix(
+    ctx: CommandContext,
+    ralph_ctx: RalphContext,
+) -> CommandResult | None:
+    """Handle /ralph [project] [@branch] prd fix - auto-fix invalid PRD.
+
+    Uses AI to convert an invalid PRD to the correct schema.
+    """
+    cwd = ralph_ctx.cwd
+    prd_manager = PRDManager(cwd / "prd.json")
+
+    if not prd_manager.exists():
+        return CommandResult(
+            text="**No PRD found**\n\n"
+            "Use `/ralph prd init` to create one."
+        )
+
+    # Validate first
+    is_valid, errors = prd_manager.validate()
+    if is_valid:
+        return CommandResult(
+            text="**PRD is already valid!**\n\n"
+            "Use `/ralph prd` to view it."
+        )
+
+    # Read current invalid PRD
+    try:
+        current_prd = prd_manager.prd_path.read_text()
+    except OSError as e:
+        return CommandResult(text=f"**Cannot read prd.json:** {e}")
+
+    errors_text = "\n".join(f"- {e}" for e in errors)
+
+    await ctx.executor.send(
+        f"**Fixing PRD schema...**\n\n"
+        f"Found {len(errors)} validation error(s). Running AI to fix..."
+    )
+
+    # Build fix prompt with absolute path
+    fix_prompt = PRD_FIX_PROMPT.format(
+        current_prd=current_prd,
+        errors=errors_text,
+        prd_path=str(prd_manager.prd_path),
+    )
+
+    # Run AI to fix
+    await ctx.executor.run_one(
+        RunRequest(prompt=fix_prompt),
+        mode="emit",
+    )
+
+    # Re-validate after fix
+    is_valid, errors = prd_manager.validate()
+    if is_valid:
+        prd = prd_manager.load()
+        return CommandResult(
+            text=f"**PRD fixed!**\n\n"
+            f"Project: {prd.project_name}\n"
+            f"Stories: {prd.total_count()}\n\n"
+            f"Use `/ralph prd` to view or `/ralph start` to begin."
+        )
+    else:
+        errors_text = "\n".join(f"  - {e}" for e in errors[:3])
+        return CommandResult(
+            text=f"**PRD still has errors**\n\n"
+            f"{errors_text}\n\n"
+            "Try running `/ralph prd fix` again or manually edit prd.json."
+        )
+
+
+async def handle_prd_show(
+    ctx: CommandContext,
+    ralph_ctx: RalphContext,
+) -> CommandResult | None:
+    """Handle /ralph [project] [@branch] prd show - show raw PRD JSON."""
+    cwd = ralph_ctx.cwd
+    prd_manager = PRDManager(cwd / "prd.json")
+
+    if not prd_manager.exists():
+        return CommandResult(
+            text="**No PRD found**\n\n"
+            "Use `/ralph prd init` to create one."
+        )
+
+    try:
+        content = prd_manager.prd_path.read_text()
+        # Try to pretty-print if valid JSON
+        try:
+            data = json.loads(content)
+            pretty = json.dumps(data, indent=2)
+        except json.JSONDecodeError:
+            pretty = content
+
+        return CommandResult(
+            text=f"**prd.json**\n\n```json\n{pretty}\n```"
+        )
+    except OSError as e:
+        return CommandResult(text=f"**Cannot read prd.json:** {e}")
 
 
 def _extract_project_name(description: str) -> str:

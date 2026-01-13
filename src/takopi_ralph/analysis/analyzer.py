@@ -86,6 +86,7 @@ class AnalysisResult:
     tasks_completed: int
     tests_status: TestsStatus
     recommendation: str
+    current_story_complete: bool  # Whether the current story is done
 
     # Computed
     error_count: int
@@ -108,6 +109,7 @@ class AnalysisResult:
             confidence_score=self.confidence_score,
             work_summary=self.work_summary,
             error_count=self.error_count,
+            current_story_complete=self.current_story_complete,
         )
 
 
@@ -187,6 +189,7 @@ class ResponseAnalyzer:
             tasks_completed=status.tasks_completed,
             tests_status=status.tests_status,
             recommendation=status.recommendation,
+            current_story_complete=status.current_story_complete,
             error_count=error_count,
         )
 
@@ -255,6 +258,7 @@ class ResponseAnalyzer:
             tasks_completed=0,
             tests_status=TestsStatus.NOT_RUN,
             recommendation="",
+            current_story_complete=has_completion_signal,  # Infer from completion signal
             error_count=error_count,
         )
 

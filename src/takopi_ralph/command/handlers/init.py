@@ -24,6 +24,7 @@ async def handle_init(
 ) -> CommandResult | None:
     """Handle /ralph [project] [@branch] init command.
 
+    This is an alias for /ralph prd init with additional environment checks.
     Starts interactive project setup:
     1. Checks if project already initialized
     2. Asks for project topic
@@ -36,12 +37,25 @@ async def handle_init(
     # Check if already initialized with PRD
     prd_manager = PRDManager(cwd / "prd.json")
     if prd_manager.exists():
+        # Validate PRD to give more helpful message
+        is_valid, errors = prd_manager.validate()
         prd = prd_manager.load()
         label = ralph_ctx.context_label()
+
+        if not is_valid:
+            return CommandResult(
+                text=f"Project **{label}** has a `prd.json` but it has validation errors:\n"
+                + "\n".join(f"  - {e}" for e in errors[:3])
+                + "\n\nRun `/ralph prd fix` to auto-fix, or `/ralph prd show` to view raw JSON."
+            )
+
         return CommandResult(
             text=f"Project already initialized in **{label}**: **{prd.project_name}**\n"
             f"Progress: {prd.progress_summary()}\n\n"
-            f"Use `/ralph prd` to view status or `/ralph start` to begin."
+            "Commands:\n"
+            "  `/ralph prd` - View PRD status\n"
+            "  `/ralph start` - Start implementation loop\n"
+            "  `/ralph prd clarify` - Add more stories"
         )
 
     # Check if loop is running
@@ -128,7 +142,7 @@ async def handle_init_topic_input(
 
     # Use LLM to generate questions for this project
     empty_prd = PRD(project_name=session.topic, description=topic)
-    analyzer = LLMAnalyzer(ctx.executor)
+    analyzer = LLMAnalyzer(ctx.executor, cwd=cwd)
 
     result = await analyzer.analyze(
         prd_json=empty_prd.model_dump_json(),

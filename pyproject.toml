@@ -1,6 +1,6 @@
 [project]
 name = "takopi-ralph"
-version = "0.3.0"
+version = "0.4.0"
 description = "Autonomous coding loop plugin for Takopi - PRD-driven development with circuit breaker protection"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -32,7 +32,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "takopi>=0.15",
+    "takopi>=0.16.0",
     "pydantic>=2.10",
     "anyio>=4.8.0",
 ]
@@ -43,7 +43,7 @@ Repository = "https://github.com/l3wi/takopi-ralph"
 Issues = "https://github.com/l3wi/takopi-ralph/issues"
 
 [project.entry-points."takopi.engine_backends"]
-ralph = "takopi_ralph.engine.backend:BACKEND"
+ralph_engine = "takopi_ralph.engine.backend:BACKEND"
 
 [project.entry-points."takopi.command_backends"]
 ralph = "takopi_ralph.command.backend:BACKEND"

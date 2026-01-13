@@ -61,6 +61,7 @@ class LoopResult(BaseModel):
     confidence_score: int = 0
     work_summary: str = ""
     error_count: int = 0
+    current_story_complete: bool = False  # Whether Claude marked the current story as done
 
 
 class RalphState(BaseModel):

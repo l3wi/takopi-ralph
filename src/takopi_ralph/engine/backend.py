@@ -9,7 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from takopi.api import EngineBackend, EngineConfig, Runner
-from takopi.engines import get_backends
+from takopi.engines import list_backends
+from takopi.utils.paths import get_run_base_dir
 
 from .runner import RalphRunner
 
@@ -28,8 +29,9 @@ def build_ralph_runner(config: EngineConfig, config_path: Path) -> Runner:
 
     The inner engine's config is read from its own section (e.g., [claude]).
     """
-    # Get working directory from config path
-    cwd = config_path.parent if config_path else Path.cwd()
+    # Get working directory - use run base dir (set by takopi for current project)
+    # Falls back to cwd if not in a takopi run context
+    cwd = get_run_base_dir() or Path.cwd()
 
     # Get engine from config (default: claude)
     engine_id = config.get("engine", "claude")
@@ -43,7 +45,7 @@ def build_ralph_runner(config: EngineConfig, config_path: Path) -> Runner:
         )
 
     # Get the inner runner from Takopi's registry
-    backends = get_backends()
+    backends = {b.id: b for b in list_backends()}
     inner_backend = backends.get(engine_id)
     if inner_backend is None:
         raise ValueError(
@@ -70,7 +72,7 @@ def build_ralph_runner(config: EngineConfig, config_path: Path) -> Runner:
 
 
 BACKEND = EngineBackend(
-    id="ralph",
+    id="ralph_engine",
     build_runner=build_ralph_runner,
     cli_cmd="claude",  # Ralph uses Claude under the hood (for now)
     install_cmd="pip install takopi-ralph",

@@ -21,16 +21,24 @@ Ship features while you sleep. Ralph runs AI agents in a loop until all tasks ar
 
 ### 1. Install
 
+Install takopi with the ralph plugin:
+
 ```bash
-uv tool install takopi-ralph
+uv tool install takopi --with takopi-ralph
 ```
 
-Or from source:
+This installs ralph as a plugin that **survives takopi upgrades**. When you upgrade takopi, the plugin stays installed.
+
+To upgrade both:
 
 ```bash
-git clone https://github.com/l3wi/takopi-ralph
-cd takopi-ralph
-uv pip install -e .
+uv tool upgrade takopi --with takopi-ralph
+```
+
+To upgrade just the plugin:
+
+```bash
+uv tool upgrade takopi --upgrade-package takopi-ralph
 ```
 
 ### 2. Configure
@@ -440,6 +448,36 @@ cd takopi-ralph
 uv sync --dev
 ```
 
+### Running During Development
+
+**Option 1: Add takopi as dev dependency (recommended)**
+
+The simplest approach - add takopi as a dev dependency, then use `uv run`:
+
+```bash
+# In takopi-ralph directory
+uv add takopi --dev
+uv run takopi plugins  # Lists plugins, should show ralph
+uv run takopi          # Run takopi with your plugin
+```
+
+This uses [pluggy](https://pluggy.readthedocs.io/en/latest/) for plugin discovery - your local plugin is automatically picked up via entry points.
+
+**Option 2: Install from local paths**
+
+For testing against local takopi changes:
+
+```bash
+uv tool install --reinstall --from /path/to/takopi takopi --with /path/to/takopi-ralph
+systemctl restart takopi  # If running as service
+```
+
+**Option 3: Editable install**
+
+```bash
+uv tool install -e /path/to/takopi --with -e /path/to/takopi-ralph
+```
+
 ### Commands
 
 ```bash
@@ -463,6 +501,27 @@ src/takopi_ralph/
 │   └── templates/       # Prompt templates
 └── init/                # Initialization flow
 ```
+
+### Plugin Architecture
+
+Ralph is a [pluggy](https://pluggy.readthedocs.io/en/latest/)-based plugin for takopi. It registers two backends via entry points in `pyproject.toml`:
+
+```toml
+[project.entry-points."takopi.command_backends"]
+ralph = "takopi_ralph.command.backend:BACKEND"
+
+[project.entry-points."takopi.engine_backends"]
+ralph_engine = "takopi_ralph.engine.backend:BACKEND"
+```
+
+- **Command backend** (`ralph`): Handles `/ralph` commands
+- **Engine backend** (`ralph_engine`): Runs the autonomous loop
+
+When developing plugins:
+1. Entry point names must match `^[a-z0-9_]{1,32}$` (no hyphens)
+2. Use `uv run takopi plugins` to verify registration
+3. Command backends receive `CommandContext` with access to executor, runtime, etc.
+4. Engine backends provide a `build_runner` function that returns a `Runner`
 
 ---
 

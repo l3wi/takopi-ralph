@@ -2,12 +2,17 @@
 
 Replaces the rule-based PRDAnalyzer with dynamic LLM analysis.
 Uses Takopi's CommandExecutor to run prompts through the configured engine.
+
+Note: Uses file-based output (writes to .ralph/analysis.json) because
+takopi's capture mode doesn't capture raw LLM output - it captures
+presenter-formatted status messages like "done · claude · 51s".
 """
 
 from __future__ import annotations
 
 import json
-import re
+import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -16,6 +21,11 @@ from .prompt_loader import build_user_prompt, get_system_prompt
 
 if TYPE_CHECKING:
     from takopi.api import CommandExecutor
+
+logger = logging.getLogger(__name__)
+
+# Output file for analysis results (relative to cwd)
+ANALYSIS_OUTPUT_FILE = ".ralph/analysis.json"
 
 
 class PRDQuestion(BaseModel):
@@ -48,15 +58,21 @@ class LLMAnalyzer:
 
     Uses the configured Takopi engine (e.g., Claude) to dynamically
     analyze PRDs, generate questions, and suggest user stories.
+
+    The analyzer instructs the LLM to write its JSON response to a file,
+    then reads that file to get the structured output. This works around
+    takopi's capture mode limitations.
     """
 
-    def __init__(self, executor: CommandExecutor):
+    def __init__(self, executor: CommandExecutor, cwd: Path | None = None):
         """Initialize the analyzer.
 
         Args:
             executor: Takopi CommandExecutor for running prompts
+            cwd: Working directory for output file. If None, uses current dir.
         """
         self.executor = executor
+        self.cwd = cwd or Path.cwd()
 
     async def analyze(
         self,
@@ -80,7 +96,6 @@ class LLMAnalyzer:
         Returns:
             AnalysisResult with analysis, questions, and suggested stories
         """
-        # Import here to avoid circular imports
         from takopi.api import RunRequest
 
         system_prompt = get_system_prompt()
@@ -93,60 +108,69 @@ class LLMAnalyzer:
             answers=answers,
         )
 
-        # Combine system + user prompt for the engine
-        # Most engines expect a single prompt, so we combine them
-        full_prompt = f"{system_prompt}\n\n---\n\n{user_prompt}"
+        # Determine output file path
+        output_path = self.cwd / ANALYSIS_OUTPUT_FILE
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Run through Takopi's engine with capture mode (don't emit to chat)
-        result = await self.executor.run_one(
+        # Delete existing output file to ensure we get fresh results
+        if output_path.exists():
+            output_path.unlink()
+
+        # Build prompt that instructs LLM to write JSON to file
+        full_prompt = f"""{system_prompt}
+
+---
+
+{user_prompt}
+
+---
+
+**IMPORTANT**: Write your JSON response to: `{output_path}`
+
+Use the Write tool to create the file with your JSON analysis result.
+Do NOT just print the JSON - you MUST write it to the file.
+The file should contain ONLY the raw JSON object, no markdown formatting."""
+
+        # Run through Takopi's engine with capture mode
+        # This runs the engine silently (no chat output) but still executes tools
+        # The LLM will write its analysis to the output file
+        await self.executor.run_one(
             RunRequest(prompt=full_prompt),
             mode="capture",
         )
 
-        # Extract the response text
-        response_text = ""
-        if result.message:
-            msg = result.message
-            response_text = msg.text if hasattr(msg, "text") else str(msg)
+        # Read the output file
+        return self._read_output_file(output_path)
 
-        return self._parse_response(response_text)
-
-    def _parse_response(self, text: str) -> AnalysisResult:
-        """Parse LLM response into AnalysisResult.
-
-        Handles both clean JSON and JSON embedded in markdown code blocks.
-        """
-        if not text:
+    def _read_output_file(self, path: Path) -> AnalysisResult:
+        """Read and parse the analysis output file."""
+        if not path.exists():
+            logger.warning("Analysis output file not found: %s", path)
             return AnalysisResult(
-                analysis="No response from LLM",
+                analysis="LLM did not write analysis output file",
                 questions=[],
                 suggested_stories=[],
             )
 
-        # Try to extract JSON from markdown code block
-        json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
-        if json_match:
-            json_text = json_match.group(1)
-        else:
-            # Try to find raw JSON object
-            json_match = re.search(r"\{[\s\S]*\}", text)
-            if json_match:
-                json_text = json_match.group(0)
-            else:
-                # No JSON found, return empty result with the text as analysis
-                return AnalysisResult(
-                    analysis=text[:500],
-                    questions=[],
-                    suggested_stories=[],
-                )
-
         try:
-            data = json.loads(json_text)
+            content = path.read_text().strip()
+            logger.debug("Read analysis output: %s", content[:200])
+
+            # Try to parse as JSON
+            data = json.loads(content)
             return self._dict_to_result(data)
-        except json.JSONDecodeError:
-            # JSON parse failed, return the text as analysis
+
+        except json.JSONDecodeError as e:
+            logger.warning("Failed to parse analysis JSON: %s", e)
             return AnalysisResult(
-                analysis=f"Failed to parse LLM response: {text[:200]}",
+                analysis=f"Failed to parse analysis JSON: {e}",
+                questions=[],
+                suggested_stories=[],
+            )
+        except OSError as e:
+            logger.warning("Failed to read analysis file: %s", e)
+            return AnalysisResult(
+                analysis=f"Failed to read analysis file: {e}",
                 questions=[],
                 suggested_stories=[],
             )
@@ -188,6 +212,7 @@ async def analyze_prd(
     executor: CommandExecutor,
     prd_json: str,
     mode: str,
+    cwd: Path | None = None,
     **kwargs: Any,
 ) -> AnalysisResult:
     """Analyze PRD using Takopi's engine.
@@ -196,10 +221,11 @@ async def analyze_prd(
         executor: Takopi CommandExecutor
         prd_json: Current PRD as JSON string
         mode: "create" or "enhance"
+        cwd: Working directory for output file
         **kwargs: Additional arguments (topic, description, focus, answers)
 
     Returns:
         AnalysisResult with analysis, questions, and suggested stories
     """
-    analyzer = LLMAnalyzer(executor)
+    analyzer = LLMAnalyzer(executor, cwd=cwd)
     return await analyzer.analyze(prd_json, mode, **kwargs)

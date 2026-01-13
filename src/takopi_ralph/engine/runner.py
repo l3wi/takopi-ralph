@@ -6,6 +6,7 @@ analyzes responses for loop control signals.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,12 +19,14 @@ from ..analysis import ResponseAnalyzer
 from ..circuit_breaker import CircuitBreaker
 from ..prd import PRDManager
 from ..state import LoopStatus, StateManager
-from .prompt_augmenter import build_continuation_prompt, build_ralph_prompt
+from .prompt_augmenter import build_ralph_prompt
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from takopi.runner import Runner
 
-ENGINE: EngineId = EngineId("ralph")
+ENGINE: EngineId = EngineId("ralph_engine")
 
 
 @dataclass
@@ -131,30 +134,22 @@ class RalphRunner(BaseRunner):
         prd = self.prd_manager.load() if self.prd_manager.exists() else None
         current_story = prd.next_story() if prd else None
 
-        # Augment prompt
-        if resume:
-            # Continuation - use simpler prompt
-            augmented_prompt = build_continuation_prompt(
-                loop_number=state.loop_number,
-                prd=prd,
-                current_story=current_story,
-                circuit_state=state.circuit_state,
-            )
-        else:
-            # New session - full prompt
-            augmented_prompt = build_ralph_prompt(
-                user_prompt=prompt,
-                prd=prd,
-                current_story=current_story,
-                loop_number=state.loop_number,
-                circuit_state=state.circuit_state,
-            )
+        # Build full prompt - Ralph always uses fresh sessions with full context
+        # The PRD is the source of truth, not Claude's context window
+        augmented_prompt = build_ralph_prompt(
+            user_prompt=prompt,
+            prd=prd,
+            current_story=current_story,
+            loop_number=state.loop_number,
+            circuit_state=state.circuit_state,
+        )
 
         # Delegate to inner runner and capture events
+        # Always use fresh session (resume=None) - PRD is our state, not Claude's context
         captured_answer = ""
         captured_resume: ResumeToken | None = None
 
-        async for event in self.inner.run(augmented_prompt, resume):
+        async for event in self.inner.run(augmented_prompt, None):
             # Capture the answer from CompletedEvent for analysis
             if isinstance(event, CompletedEvent):
                 captured_answer = event.answer
@@ -162,6 +157,10 @@ class RalphRunner(BaseRunner):
 
             # Pass through all events from inner runner
             yield event
+
+        # Note: We intentionally do NOT store session ID for continuation.
+        # Ralph uses fresh Claude sessions each iteration - the PRD is the
+        # source of truth, not Claude's context window.
 
         # Analyze response after inner runner completes
         state.last_answer = captured_answer
@@ -174,6 +173,16 @@ class RalphRunner(BaseRunner):
             has_errors=analysis.is_stuck,
             output_length=len(state.last_answer),
         )
+
+        # CRITICAL: Mark story complete in PRD if Claude reports it's done
+        logger.info(
+            "Story completion check: current_story_complete=%s, current_story=%s",
+            analysis.current_story_complete,
+            current_story.id if current_story else None,
+        )
+        if analysis.current_story_complete and current_story:
+            logger.info("Marking story %d as complete", current_story.id)
+            self.prd_manager.mark_complete(current_story.id)
 
         # Update state
         loop_result = analysis.to_loop_result()

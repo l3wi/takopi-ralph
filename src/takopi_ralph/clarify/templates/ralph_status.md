@@ -5,7 +5,7 @@ At the END of your response, you MUST include this status block:
 ```
 ---RALPH_STATUS---
 STATUS: IN_PROGRESS | COMPLETE | BLOCKED
-TASKS_COMPLETED_THIS_LOOP: <number>
+CURRENT_STORY_COMPLETE: true | false
 FILES_MODIFIED: <number>
 TESTS_STATUS: PASSING | FAILING | NOT_RUN
 WORK_TYPE: IMPLEMENTATION | TESTING | DOCUMENTATION | REFACTORING
@@ -13,6 +13,14 @@ EXIT_SIGNAL: false | true
 RECOMMENDATION: <one-line summary of what to do next>
 ---END_RALPH_STATUS---
 ```
+
+### CURRENT_STORY_COMPLETE field
+Set `CURRENT_STORY_COMPLETE: true` when the current story's acceptance criteria are ALL met:
+- All code changes are implemented
+- All tests pass (if applicable)
+- The feature works as described
+
+Set `CURRENT_STORY_COMPLETE: false` if you're still working on the story or haven't finished all criteria.
 
 ### When to set EXIT_SIGNAL: true
 Set EXIT_SIGNAL to true when ALL of these conditions are met:
